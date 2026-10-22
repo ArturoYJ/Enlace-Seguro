@@ -10,6 +10,7 @@
 - El CSV de patrones se trasladó sin cambio de contenido a `database/modeling/access-patterns.csv`.
 - El repositorio GitHub indicado es público y estaba vacío al conectar el remoto; `origin` apunta a `https://github.com/ArturoYJ/Enlace-Seguro.git`.
 - Los anexos fuente con datos académicos se conservan localmente y están excluidos mediante `.gitignore`; el registro público de fuentes no expone sus nombres de archivo.
+- El scaffold documental aprobado se publicó en `origin/main` en el commit `cf4b2cc`; se incluyeron 37 archivos de documentación no sensible.
 
 ## Pendientes de decisión/verificación
 
