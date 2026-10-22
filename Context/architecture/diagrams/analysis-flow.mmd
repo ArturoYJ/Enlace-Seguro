@@ -1,0 +1,17 @@
+%% Flujo propuesto según la propuesta académica; no acredita implementación.
+sequenceDiagram
+  actor U as Usuario
+  participant M as App móvil
+  participant A as API REST
+  participant S as Sandbox
+  participant R as Fuentes de reputación
+  participant D as Almacenamiento (motor sin resolver)
+  U->>M: Comparte o pega enlace
+  M->>A: Envía solicitud de análisis
+  A->>A: Valida URL y límites
+  A->>S: Solicita inspección aislada
+  S-->>A: Señales, redirecciones y captura
+  A->>R: Consulta URL/destinos cuando disponibles
+  R-->>A: Respuestas o fallas de proveedor
+  A->>D: Persiste análisis (motor por confirmar)
+  A-->>M: Devuelve veredicto explicado

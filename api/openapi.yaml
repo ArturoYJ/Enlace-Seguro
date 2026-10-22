@@ -1,0 +1,9 @@
+openapi: 3.1.0
+info:
+  title: EnlaceSeguro API
+  version: 0.1.0-draft
+  description: >-
+    Esqueleto documental. No define endpoints porque la propuesta disponible
+    describe capacidades, pero no métodos, rutas ni esquemas de intercambio.
+    Agregar operaciones solo después de acordar y verificar el contrato.
+paths: {}

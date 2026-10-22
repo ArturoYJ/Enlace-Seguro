@@ -1,0 +1,6 @@
+%% Vista simplificada del grafo canónico system.json. Elementos propuestos; persistencia sin motor resuelto.
+flowchart LR
+  Mobile["App móvil\nFlutter/Dart — propuesta"] --> API["API REST\nFastify — propuesta"]
+  API -. "persistencia: motor sin resolver" .-> DB["Decisión de almacenamiento\nPostgreSQL vs MongoDB"]
+  API --> Sandbox["Pool sandbox\n3 servicios — propuesta"]
+  API --> Reputation["Fuentes de reputación\nsi están disponibles"]

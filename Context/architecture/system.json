@@ -1,0 +1,153 @@
+{
+  "$schema": "./system.schema.json",
+  "version": "1.0.0",
+  "statusSemantics": {
+    "confirmed": "Respaldado por una fuente o verificación citada; no significa por sí solo que esté implementado.",
+    "proposed": "Descrito como intención de diseño en una fuente del proyecto.",
+    "unknown": "No decidido o no verificado con la evidencia disponible."
+  },
+  "nodes": [
+    {
+      "id": "project",
+      "type": "project",
+      "name": "EnlaceSeguro",
+      "status": "confirmed",
+      "sources": [
+        {
+          "path": "../project/sources.md#proposal-local",
+          "claim": "La propuesta identifica el proyecto como EnlaceSeguro."
+        }
+      ]
+    },
+    {
+      "id": "mobile-app",
+      "type": "client",
+      "name": "Aplicación móvil Flutter/Dart",
+      "status": "proposed",
+      "sources": [
+        {
+          "path": "../project/sources.md#proposal-local",
+          "claim": "Tecnología y funciones móviles previstas."
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "service",
+      "name": "API REST Node.js 22, TypeScript y Fastify",
+      "status": "proposed",
+      "sources": [
+        {
+          "path": "../project/sources.md#proposal-local",
+          "claim": "Stack y responsabilidades previstos para la API."
+        }
+      ]
+    },
+    {
+      "id": "database-engine",
+      "type": "unresolved-decision",
+      "name": "Motor de almacenamiento",
+      "status": "unknown",
+      "alternatives": [
+        {
+          "name": "PostgreSQL 16",
+          "status": "proposed",
+          "source": "../project/sources.md#proposal-local"
+        },
+        {
+          "name": "MongoDB / base documental",
+          "status": "proposed",
+          "source": "../../database/modeling/access-patterns.csv"
+        }
+      ],
+      "sources": [
+        {
+          "path": "../project/sources.md#proposal-local",
+          "claim": "La propuesta especifica PostgreSQL 16."
+        },
+        {
+          "path": "../../database/modeling/access-patterns.csv",
+          "claim": "El artefacto del ejercicio especifica MongoDB como objetivo de modelado."
+        }
+      ]
+    },
+    {
+      "id": "sandbox-pool",
+      "type": "isolated-service-pool",
+      "name": "Tres servicios sandbox con Playwright/Chromium",
+      "status": "proposed",
+      "sources": [
+        {
+          "path": "../project/sources.md#proposal-local",
+          "claim": "La propuesta plantea tres servicios sandbox independientes."
+        }
+      ]
+    },
+    {
+      "id": "reputation-sources",
+      "type": "external-services",
+      "name": "Fuentes de reputación previstas",
+      "status": "proposed",
+      "sources": [
+        {
+          "path": "../project/sources.md#proposal-local",
+          "claim": "VirusTotal, Google Safe Browsing y URLhaus; RDAP/WHOIS como señal condicionada."
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "mobile-sends-request",
+      "from": "mobile-app",
+      "to": "api",
+      "relation": "sends-analysis-request-and-displays-result",
+      "status": "proposed",
+      "sources": [
+        {
+          "path": "../project/sources.md#proposal-local",
+          "claim": "Flujo funcional propuesto."
+        }
+      ]
+    },
+    {
+      "id": "api-persists-data",
+      "from": "api",
+      "to": "database-engine",
+      "relation": "persists-accounts-and-analysis-history",
+      "status": "unknown",
+      "sources": [
+        {
+          "path": "../project/sources.md#proposal-local",
+          "claim": "La propuesta requiere persistencia, pero el motor objetivo está en conflicto con el artefacto BDaaS."
+        }
+      ]
+    },
+    {
+      "id": "api-dispatches-browser-analysis",
+      "from": "api",
+      "to": "sandbox-pool",
+      "relation": "dispatches-isolated-browser-analysis",
+      "status": "proposed",
+      "sources": [
+        {
+          "path": "../project/sources.md#proposal-local",
+          "claim": "La API coordinaría el análisis en sandboxes."
+        }
+      ]
+    },
+    {
+      "id": "api-queries-reputation",
+      "from": "api",
+      "to": "reputation-sources",
+      "relation": "queries-reputation-when-available",
+      "status": "proposed",
+      "sources": [
+        {
+          "path": "../project/sources.md#proposal-local",
+          "claim": "Las consultas dependen de credenciales, cuotas y disponibilidad."
+        }
+      ]
+    }
+  ]
+}

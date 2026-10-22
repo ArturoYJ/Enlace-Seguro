@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/enlaceseguro/system.schema.json",
+  "title": "EnlaceSeguro system context graph",
+  "type": "object",
+  "required": ["$schema", "version", "statusSemantics", "nodes", "edges"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "string" },
+    "statusSemantics": {
+      "type": "object",
+      "required": ["confirmed", "proposed", "unknown"],
+      "properties": {
+        "confirmed": { "type": "string", "minLength": 1 },
+        "proposed": { "type": "string", "minLength": 1 },
+        "unknown": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    }
+  },
+  "$defs": {
+    "status": {
+      "type": "string",
+      "enum": ["confirmed", "proposed", "unknown"]
+    },
+    "source": {
+      "type": "object",
+      "required": ["path", "claim"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "claim": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "alternative": {
+      "type": "object",
+      "required": ["name", "status", "source"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/status" },
+        "source": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "type", "name", "status", "sources"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "type": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/status" },
+        "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } },
+        "alternatives": { "type": "array", "items": { "$ref": "#/$defs/alternative" } }
+      },
+      "additionalProperties": false
+    },
+    "edge": {
+      "type": "object",
+      "required": ["id", "from", "to", "relation", "status", "sources"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "from": { "type": "string", "minLength": 1 },
+        "to": { "type": "string", "minLength": 1 },
+        "relation": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/status" },
+        "sources": { "type": "array", "items": { "$ref": "#/$defs/source" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

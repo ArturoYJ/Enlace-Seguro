@@ -1,0 +1,8 @@
+# Local-only academic source attachments; publish only after separate review and authorization
+/U2Propuesta de proyecto-*.pdf
+/Context/context.md
+
+# Local secrets
+.env
+.env.*
+!.env.example
