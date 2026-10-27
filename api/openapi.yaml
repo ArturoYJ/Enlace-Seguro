@@ -1,9 +1,1057 @@
 openapi: 3.1.0
 info:
-  title: EnlaceSeguro API
-  version: 0.1.0-draft
+  title: EnlaceSeguro REST API
+  version: 1.0.0
   description: >-
-    Esqueleto documental. No define endpoints porque la propuesta disponible
-    describe capacidades, pero no métodos, rutas ni esquemas de intercambio.
-    Agregar operaciones solo después de acordar y verificar el contrato.
-paths: {}
+    Especificación de la API REST para el sistema EnlaceSeguro. Permite el registro y autenticación
+    de usuarios mediante tokens JWT y Refresh Tokens rotativos, la recepción y análisis preventivo
+    de URLs en entornos sandbox aislados, la consulta del historial personal con control de cuota diaria
+    (máximo 5 solicitudes por usuario/día calendario en America/Mexico_City), y la supervisión
+    administrativa de métricas y eventos de auditoría de seguridad.
+servers:
+  - url: http://localhost:3000/api/v1
+    description: Servidor de desarrollo local
+  - url: https://api.enlaceseguro.internal/api/v1
+    description: Entorno de pruebas / staging
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Comprobación de estado de salud del servicio
+      description: Retorna el estado operativo de la API y sus dependencias críticas (MongoDB y Sandbox).
+      operationId: getHealthStatus
+      security: []
+      responses:
+        '200':
+          description: Servicio saludable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Servicio degradado o dependencias no disponibles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /auth/register:
+    post:
+      summary: Registro de cuenta pública
+      description: >-
+        Crea una nueva cuenta de usuario asignando estrictamente el rol 'usuario'.
+        Normaliza el correo electrónico y almacena la contraseña protegida con bcrypt (costo 12).
+        Registra el evento de auditoría 'account.registered'.
+      operationId: registerUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Cuenta registrada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Datos de solicitud inválidos o contraseña no cumple directivas
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '409':
+          description: Conflicto, el correo ya se encuentra registrado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '429':
+          description: Límite de tasa de solicitudes excedido (rate limit)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /auth/login:
+    post:
+      summary: Inicio de sesión
+      description: >-
+        Valida las credenciales provistas y retorna un par de tokens: un Access Token (JWT)
+        con validez de 15 minutos y un Refresh Token rotativo con validez de 7 días.
+        Registra 'auth.login.succeeded' o 'auth.login.failed' en auditoría.
+      operationId: loginUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Autenticación exitosa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Formato de carga útil inválido
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Credenciales incorrectas o cuenta deshabilitada
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '429':
+          description: Exceso de intentos de inicio de sesión
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /auth/refresh:
+    post:
+      summary: Renovación de Access Token mediante Refresh Token rotativo
+      description: >-
+        Invalida el Refresh Token presentado y emite un nuevo par de tokens dentro de la misma
+        familia (`familyId`). Si se detecta un token previamente revocado, invalida toda la familia de tokens.
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Tokens renovados exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Petición malformada
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Refresh Token inválido, expirado o reutilización detectada
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /auth/logout:
+    post:
+      summary: Cierre de sesión y revocación de Refresh Token
+      description: Invalida el Refresh Token proporcionado en la base de datos para impedir renovaciones posteriores.
+      operationId: logoutUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        '204':
+          description: Sesión cerrada exitosamente
+        '401':
+          description: No autenticado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /auth/me:
+    get:
+      summary: Consulta del perfil del usuario autenticado y estado de cuota
+      description: >-
+        Retorna la identidad y rol del usuario, así como el balance de solicitudes consumidas
+        y disponibles para la fecha local en curso en la zona horaria 'America/Mexico_City'.
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Perfil y estado de cuota obtenidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfileResponse'
+        '401':
+          description: No autenticado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /analyses:
+    post:
+      summary: Envío de enlace para análisis preventivo
+      description: >-
+        Admite una solicitud de análisis registrando el intento en el documento diario del usuario
+        en una operación atómica. Consume 1 unidad de cuota diaria (máximo 5 por día). Si la cuota
+        está agotada, retorna 429 sin persistir el intento.
+      operationId: submitAnalysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisSubmissionRequest'
+      responses:
+        '201':
+          description: Solicitud de análisis admitida y puesta en cola de procesamiento
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisAdmissionResponse'
+        '400':
+          description: Entrada inválida (longitud excedida o formato inadmisible)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: No autenticado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '429':
+          description: Cuota diaria agotada (5/5 solicitudes consumidas hoy)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+    get:
+      summary: Consulta de historial personal paginado de análisis
+      description: >-
+        Retorna la lista de análisis del usuario autenticado ordenados cronológicamente de forma descendente.
+        Utiliza paginación por cursor compuesto estable (localDate, receivedAt, attemptId).
+      operationId: listAnalysesHistory
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Cantidad máxima de análisis por página (1 a 50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+        - name: cursor
+          in: query
+          required: false
+          description: Cursor opaco de paginación para continuar desde la última tupla
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          required: false
+          description: Fecha inicial de filtrado (YYYY-MM-DD)
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        - name: endDate
+          in: query
+          required: false
+          description: Fecha final de filtrado (YYYY-MM-DD)
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+      responses:
+        '200':
+          description: Historial de análisis obtenido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysesListResponse'
+        '401':
+          description: No autenticado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /analyses/{attemptId}:
+    get:
+      summary: Consulta de detalle de un análisis
+      description: >-
+        Retorna el veredicto, razones, destino final, señales, redirecciones, fuentes de reputación
+        y referencia de captura del análisis especificado. El usuario solo puede consultar análisis propios,
+        mientras que el administrador puede acceder a cualquiera.
+      operationId: getAnalysisDetail
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          description: Identificador globalmente único del intento de análisis (UUID v4)
+          schema:
+            type: string
+            format: uuid
+            pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+        - name: localDate
+          in: query
+          required: false
+          description: Fecha local de partición diaria (YYYY-MM-DD) para optimizar la localización del documento padre
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+      responses:
+        '200':
+          description: Detalle completo del análisis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisDetailResponse'
+        '401':
+          description: No autenticado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '404':
+          description: Análisis no encontrado o no pertenece al usuario autenticado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /admin/audit-events:
+    get:
+      summary: Consulta administrativa de eventos de auditoría de seguridad
+      description: >-
+        Permite a cuentas con rol 'admin' listar eventos de seguridad dentro de un rango temporal,
+        con filtro opcional por tipo de evento. Paginación mediante cursor.
+      operationId: listAuditEvents
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          description: Fecha inicial del rango de búsqueda (YYYY-MM-DD)
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        - name: endDate
+          in: query
+          required: true
+          description: Fecha final del rango de búsqueda (YYYY-MM-DD)
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        - name: eventType
+          in: query
+          required: false
+          description: Filtrado por tipo de evento de auditoría
+          schema:
+            $ref: '#/components/schemas/AuditEventType'
+        - name: limit
+          in: query
+          required: false
+          description: Límite de eventos por página (1 a 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          description: Cursor opaco de paginación
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lista de eventos de auditoría
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEventsListResponse'
+        '401':
+          description: No autenticado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Acceso denegado (requiere rol admin)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /admin/metrics:
+    get:
+      summary: Consulta administrativa de métricas agregadas de uso y veredictos
+      description: >-
+        Calcula y retorna agregaciones de solicitudes recibidas, estados de procesamiento y
+        distribución de veredictos emitidos en el intervalo de fechas indicado. Solo accesible para administradores.
+      operationId: getAdminMetrics
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          description: Fecha de inicio de cálculo (YYYY-MM-DD)
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        - name: endDate
+          in: query
+          required: true
+          description: Fecha de fin de cálculo (YYYY-MM-DD)
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+      responses:
+        '200':
+          description: Agregaciones métricas del período
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminMetricsResponse'
+        '401':
+          description: No autenticado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Acceso denegado (requiere rol admin)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        Token de acceso JWT sin estado (HS256) enviado en el encabezado Authorization: Bearer <token>
+
+  schemas:
+    ProblemDetails:
+      type: object
+      description: Estructura estándar de error conforme a RFC 9457 / RFC 7807
+      required:
+        - type
+        - title
+        - status
+        - detail
+      properties:
+        type:
+          type: string
+          format: uri
+          example: 'https://api.enlaceseguro.internal/errors/quota-exceeded'
+        title:
+          type: string
+          example: 'Daily Quota Exceeded'
+        status:
+          type: integer
+          example: 429
+        detail:
+          type: string
+          example: 'You have consumed your 5 allowed link analysis requests for today.'
+        instance:
+          type: string
+          example: '/api/v1/analyses'
+        invalidParams:
+          type: array
+          items:
+            type: object
+            required:
+              - name
+              - reason
+            properties:
+              name:
+                type: string
+              reason:
+                type: string
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+        - services
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+        services:
+          type: object
+          required:
+            - database
+            - sandboxPool
+          properties:
+            database:
+              type: string
+              enum: [up, down]
+              example: up
+            sandboxPool:
+              type: string
+              enum: [up, degraded, down]
+              example: up
+
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          example: 'usuario@ejemplo.com'
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: Contraseña en texto plano para ser procesada con bcrypt (costo 12).
+          example: 'P@ssw0rdSegura2026!'
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: 'usuario@ejemplo.com'
+        password:
+          type: string
+          example: 'P@ssw0rdSegura2026!'
+
+    TokenResponse:
+      type: object
+      required:
+        - accessToken
+        - refreshToken
+        - tokenType
+        - expiresIn
+      properties:
+        accessToken:
+          type: string
+          description: JWT sin estado firmado con validez de 15 minutos (900 s)
+        refreshToken:
+          type: string
+          description: Token opaco criptográfico rotativo de 256 bits codificado en base64url
+        tokenType:
+          type: string
+          enum: [Bearer]
+          example: Bearer
+        expiresIn:
+          type: integer
+          description: Segundos de vigencia del Access Token
+          example: 900
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+          example: 'dGhpcy1pcy1hLXJhbmRvbS1yZWZyZXNoLXRva2Vu'
+
+    LogoutRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+        allDevices:
+          type: boolean
+          default: false
+          description: Si es true, revoca todas las sesiones activas del usuario
+
+    UserResponse:
+      type: object
+      required:
+        - id
+        - email
+        - role
+        - accountStatus
+        - createdAt
+      properties:
+        id:
+          type: string
+          example: '653b6f2e8f1b2c0012a4b890'
+        email:
+          type: string
+          format: email
+          example: 'usuario@ejemplo.com'
+        role:
+          type: string
+          enum: [admin, usuario]
+          example: usuario
+        accountStatus:
+          type: string
+          enum: [active, disabled]
+          example: active
+        createdAt:
+          type: string
+          format: date-time
+
+    UserProfileResponse:
+      type: object
+      required:
+        - user
+        - quota
+      properties:
+        user:
+          $ref: '#/components/schemas/UserResponse'
+        quota:
+          type: object
+          required:
+            - localDate
+            - timezone
+            - limit
+            - used
+            - remaining
+            - resetAt
+          properties:
+            localDate:
+              type: string
+              example: '2026-10-26'
+            timezone:
+              type: string
+              example: 'America/Mexico_City'
+            limit:
+              type: integer
+              example: 5
+            used:
+              type: integer
+              minimum: 0
+              maximum: 5
+              example: 2
+            remaining:
+              type: integer
+              minimum: 0
+              maximum: 5
+              example: 3
+            resetAt:
+              type: string
+              format: date-time
+              example: '2026-10-27T00:00:00-06:00'
+
+    AnalysisSubmissionRequest:
+      type: object
+      required:
+        - input
+      properties:
+        input:
+          type: string
+          minLength: 1
+          maxLength: 8192
+          description: URL o texto contenedor de URL a ser analizado de forma preventiva
+          example: 'https://enlace-sospechoso.example/login'
+
+    AnalysisAdmissionResponse:
+      type: object
+      required:
+        - attemptId
+        - receivedAt
+        - localDate
+        - processingStatus
+        - inputDigest
+        - inputSizeBytes
+      properties:
+        attemptId:
+          type: string
+          format: uuid
+          example: 'c9bf9e57-1685-4c89-bafb-ff5af830be8a'
+        receivedAt:
+          type: string
+          format: date-time
+        localDate:
+          type: string
+          example: '2026-10-26'
+        processingStatus:
+          $ref: '#/components/schemas/ProcessingStatus'
+        inputDigest:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          example: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+        inputSizeBytes:
+          type: integer
+          example: 39
+
+    ProcessingStatus:
+      type: string
+      enum:
+        - received
+        - validation_failed
+        - processing
+        - completed
+        - inconclusive
+        - failed
+      example: received
+
+    Verdict:
+      type: string
+      enum:
+        - peligroso
+        - sospechoso
+        - sin_amenazas_detectadas
+      example: peligroso
+
+    AnalysisSummaryItem:
+      type: object
+      required:
+        - attemptId
+        - localDate
+        - receivedAt
+        - processingStatus
+      properties:
+        attemptId:
+          type: string
+          format: uuid
+        localDate:
+          type: string
+          example: '2026-10-26'
+        receivedAt:
+          type: string
+          format: date-time
+        submittedInput:
+          type: string
+          nullable: true
+          example: 'https://enlace-sospechoso.example/login'
+        processingStatus:
+          $ref: '#/components/schemas/ProcessingStatus'
+        verdict:
+          $ref: '#/components/schemas/Verdict'
+          nullable: true
+        finalDestination:
+          type: string
+          nullable: true
+          example: 'https://enlace-sospechoso.example/login-phishing.php'
+
+    AnalysesListResponse:
+      type: object
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalysisSummaryItem'
+        nextCursor:
+          type: string
+          nullable: true
+          description: Token de cursor para la siguiente página; null si no hay más páginas
+        hasMore:
+          type: boolean
+
+    SourceResult:
+      type: object
+      required:
+        - sourceName
+        - status
+        - checkedAt
+        - expiresAt
+      properties:
+        sourceName:
+          type: string
+          example: 'VirusTotal'
+        status:
+          type: string
+          example: 'flagged'
+        checkedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        resultCode:
+          type: string
+          nullable: true
+          example: 'malicious'
+        summary:
+          type: string
+          nullable: true
+          example: '8 security vendors flagged this domain as malicious'
+
+    SourceFailure:
+      type: object
+      required:
+        - sourceName
+        - reasonCode
+      properties:
+        sourceName:
+          type: string
+          example: 'GoogleSafeBrowsing'
+        reasonCode:
+          type: string
+          example: 'timeout'
+
+    AnalysisPayload:
+      type: object
+      required:
+        - verdict
+        - reasons
+        - finalDestination
+        - sourceResults
+        - sourceFailures
+        - signals
+        - redirects
+      properties:
+        verdict:
+          $ref: '#/components/schemas/Verdict'
+        reasons:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 512
+          example:
+            - 'Dominio registrado hace menos de 48 horas'
+            - 'Presencia de formulario de suplantación de identidad bancaria'
+        finalDestination:
+          type: string
+          maxLength: 8192
+          example: 'https://enlace-sospechoso.example/login-phishing.php'
+        sourceResults:
+          type: array
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/SourceResult'
+        sourceFailures:
+          type: array
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/SourceFailure'
+        signals:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            maxLength: 256
+          example:
+            - 'domain_age_days:1'
+            - 'tls_issuer_untrusted'
+        redirects:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 8192
+          example:
+            - 'http://enlace-sospechoso.example'
+            - 'https://enlace-sospechoso.example/login-phishing.php'
+        screenshotRef:
+          type: string
+          nullable: true
+          description: Referencia opaca o URL firmada temporal de acceso a la captura en almacenamiento privado
+          example: 'https://storage.enlaceseguro.internal/captures/c9bf9e57.webp'
+
+    AnalysisDetailResponse:
+      type: object
+      required:
+        - attemptId
+        - receivedAt
+        - updatedAt
+        - processingStatus
+        - inputDigest
+        - inputSizeBytes
+      properties:
+        attemptId:
+          type: string
+          format: uuid
+        localDate:
+          type: string
+          example: '2026-10-26'
+        receivedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        processingStatus:
+          $ref: '#/components/schemas/ProcessingStatus'
+        submittedInput:
+          type: string
+          nullable: true
+        inputDigest:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        inputSizeBytes:
+          type: integer
+        analysis:
+          $ref: '#/components/schemas/AnalysisPayload'
+          nullable: true
+
+    AuditEventType:
+      type: string
+      enum:
+        - auth.login.succeeded
+        - auth.login.failed
+        - authz.denied
+        - account.registered
+        - analysis.accepted
+        - analysis.validation_failed
+        - analysis.completed
+        - analysis.inconclusive
+        - analysis.failed
+        - admin.audit.read
+
+    AuditEventItem:
+      type: object
+      required:
+        - id
+        - occurredAt
+        - eventType
+      properties:
+        id:
+          type: string
+          example: '653b708e8f1b2c0012a4b895'
+        occurredAt:
+          type: string
+          format: date-time
+        eventType:
+          $ref: '#/components/schemas/AuditEventType'
+        actorType:
+          type: string
+          nullable: true
+          example: 'user'
+        actorId:
+          type: string
+          nullable: true
+          example: '653b6f2e8f1b2c0012a4b890'
+        action:
+          type: string
+          nullable: true
+          example: 'login'
+        outcome:
+          type: string
+          enum: [success, failure, denied, partial]
+          nullable: true
+          example: 'success'
+        resourceType:
+          type: string
+          nullable: true
+          example: 'session'
+        resourceId:
+          type: string
+          nullable: true
+        requestId:
+          type: string
+          nullable: true
+          example: 'req-8f2a1b9c'
+        metadata:
+          type: object
+          nullable: true
+          properties:
+            reasonCode:
+              type: string
+            sourceName:
+              type: string
+            providerCode:
+              type: string
+            analysisStatus:
+              type: string
+            httpStatus:
+              type: integer
+
+    AuditEventsListResponse:
+      type: object
+      required:
+        - items
+        - hasMore
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEventItem'
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
+
+    AdminMetricsResponse:
+      type: object
+      required:
+        - dateRange
+        - totalAttempts
+        - byStatus
+        - byVerdict
+      properties:
+        dateRange:
+          type: object
+          required:
+            - startDate
+            - endDate
+          properties:
+            startDate:
+              type: string
+              example: '2026-10-01'
+            endDate:
+              type: string
+              example: '2026-10-26'
+        totalAttempts:
+          type: integer
+          example: 180
+        byStatus:
+          type: object
+          required:
+            - received
+            - validation_failed
+            - processing
+            - completed
+            - inconclusive
+            - failed
+          properties:
+            received:
+              type: integer
+            validation_failed:
+              type: integer
+            processing:
+              type: integer
+            completed:
+              type: integer
+            inconclusive:
+              type: integer
+            failed:
+              type: integer
+        byVerdict:
+          type: object
+          required:
+            - peligroso
+            - sospechoso
+            - sin_amenazas_detectadas
+          properties:
+            peligroso:
+              type: integer
+            sospechoso:
+              type: integer
+            sin_amenazas_detectadas:
+              type: integer

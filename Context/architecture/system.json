@@ -22,12 +22,12 @@
     {
       "id": "mobile-app",
       "type": "client",
-      "name": "Aplicación móvil Flutter/Dart",
-      "status": "proposed",
+      "name": "Aplicación móvil React Native",
+      "status": "confirmed",
       "sources": [
         {
-          "path": "../project/sources.md#proposal-local",
-          "claim": "Tecnología y funciones móviles previstas."
+          "path": "../architecture/auth-design.md",
+          "claim": "El usuario confirmó React Native para la aplicación móvil."
         }
       ]
     },
@@ -35,11 +35,11 @@
       "id": "api",
       "type": "service",
       "name": "API REST Node.js 22, TypeScript y Fastify",
-      "status": "proposed",
+      "status": "confirmed",
       "sources": [
         {
-          "path": "../project/sources.md#proposal-local",
-          "claim": "Stack y responsabilidades previstos para la API."
+          "path": "../architecture/auth-design.md",
+          "claim": "El usuario confirmó Node.js 22, TypeScript y Fastify para la API."
         }
       ]
     },
@@ -74,12 +74,12 @@
     {
       "id": "sandbox-pool",
       "type": "isolated-service-pool",
-      "name": "Tres servicios sandbox con Playwright/Chromium",
-      "status": "proposed",
+      "name": "Servicio sandbox con pool configurable de Playwright/Chromium",
+      "status": "confirmed",
       "sources": [
         {
-          "path": "../project/sources.md#proposal-local",
-          "claim": "La propuesta plantea tres servicios sandbox independientes."
+          "path": "../architecture/auth-design.md",
+          "claim": "El usuario aprobó unificar en un servicio sandbox con pool de contextos Playwright."
         }
       ]
     },
