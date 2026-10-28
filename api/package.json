@@ -1,0 +1,40 @@
+{
+  "name": "enlaceseguro-api",
+  "version": "1.0.0",
+  "description": "EnlaceSeguro REST API backend - Node.js 22 LTS, Fastify, TypeScript and MongoDB 8.0.x",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "node --test --import tsx 'tests/**/*.test.ts'",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "security",
+    "fastify",
+    "mongodb",
+    "typescript",
+    "url-analyzer"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@fastify/cors": "^10.0.2",
+    "@fastify/jwt": "^9.0.4",
+    "@fastify/sensible": "^6.0.3",
+    "bcrypt": "^5.1.1",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.1",
+    "fastify-plugin": "^6.0.1",
+    "mongodb": "^6.14.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/node": "^22.13.9",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}

@@ -6,3 +6,9 @@
 .env
 .env.*
 !.env.example
+
+# Dependencies and build outputs
+node_modules/
+dist/
+coverage/
+.DS_Store
