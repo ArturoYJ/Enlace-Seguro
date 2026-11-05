@@ -70,7 +70,7 @@ export ANDROID_SDK_ROOT="$ANDROID_HOME"
 ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
 ```
 
-El directorio `android/` es generado e ignorado por Git. En un checkout nuevo debe generarse con Expo prebuild antes del build; ese procedimiento desde cero aún no se ha verificado como parte de esta demo. No uses `--clean` sobre cambios nativos que quieras conservar. Recalcula el SHA-256 y verifica firma, arquitectura y URL LAN después de cada build.
+El directorio `android/` es generado e ignorado por Git. En un checkout nuevo, tras instalar dependencias, puede generarse desde `frontend/mobile/` con `CI=1 ./node_modules/.bin/expo prebuild --platform android --no-install`. Se verificaron `npm ci`, prebuild y `assembleRelease` ARM64 desde una copia aislada de los archivos versionados, usando una URL sintética; el APK resultante tenía firma debug v2 y target 36. Es evidencia de reconstrucción funcional, no de bytes idénticos ni de instalación en Android. No ejecutes prebuild sobre cambios nativos que quieras conservar sin respaldarlos. Recalcula el SHA-256 y verifica firma, arquitectura y URL LAN después de cada build.
 
 ## Purga local de capturas
 

@@ -5,6 +5,8 @@
 
 ## Demo local — avance vigente — 2026-11-05
 
+- En una copia aislada de archivos versionados pasaron `npm ci`, Expo prebuild y Gradle `assembleRelease` ARM64 con URL sintética; APK debug v2, target 36. No prueba instalación en Android ni reproducibilidad bit a bit; no se alteró el APK de demo.
+
 - El usuario confirmó en iPhone que VoiceOver anuncia el campo de enlace y los botones Analizar, Historial y Cerrar sesión; otros estados, foco, texto y contraste siguen pendientes.
 
 - El cliente usa Expo SDK 58. El usuario confirmó en iPhone registro de cuenta exclusiva de demo, login, navegación, análisis, historial y logout; informó que la interfaz se ve igual que la simulación. Persisten QA independiente contra Figma, VoiceOver y expiración de sesión en dispositivo.
