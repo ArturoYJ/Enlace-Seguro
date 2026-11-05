@@ -11,7 +11,9 @@ permissions:
 jobs:
   checks:
     name: Node 22 checks and disposable MongoDB suite
-    runs-on: ubuntu-latest
+    # Temporary compatibility trial; ubuntu-22.04 is scheduled for retirement in April 2027.
+    # Keep Chromium's sandbox enabled; migrate to a supported runner after validation.
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
 
     steps:
