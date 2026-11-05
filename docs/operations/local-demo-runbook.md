@@ -52,7 +52,7 @@ Si el iPhone no conecta, confirma IP, red, firewall y que `/status` de Metro y `
 3. Un resultado sin amenazas detectadas no garantiza seguridad. Si el análisis falla o es inconcluso, no muestres un veredicto inventado.
 4. Con los servicios anteriores ejecutándose, `scripts/local/smoke` revisa health, UI admin y la suite de integración con Mongo y fixtures desechables. No sustituye la prueba en el iPhone.
 
-El APK demo actual está en `frontend/mobile/android/app/build/outputs/apk/release/app-release.apk`: Expo SDK 58, solo ARM64, API `http://172.17.58.120:3000/api/v1`, target Android 36, firma debug (v2). Su SHA-256 actual es `9c6e5ea8d8847858335ee808ab657508d258cd7532c87072949a71456670c72b`. Verifica primero que la IP del Mac no haya cambiado. El paquete fue compilado, pero no se instaló ni probó en dispositivo Android. Para release/producción no reutilizarlo: requiere HTTPS y firma release; elimina `usesCleartextTraffic` y reevalúa minificación.
+El APK demo actual está en `frontend/mobile/android/app/build/outputs/apk/release/app-release.apk`: Expo SDK 58, solo ARM64, API LAN configurada en `.env.local` al compilar, target Android 36, firma debug (v2). Su SHA-256 actual es `421efcbc195bb040abae4c31330e5fb23680ffde554e4fac2e05f1c3d1a13dd1`. Verifica primero que la IP del Mac no haya cambiado. El paquete fue compilado, pero no se instaló ni probó en dispositivo Android. Para release/producción no reutilizarlo: requiere HTTPS y firma release; elimina `usesCleartextTraffic` y reevalúa minificación.
 
 ## Purga local de capturas
 

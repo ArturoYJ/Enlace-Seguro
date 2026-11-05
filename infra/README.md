@@ -8,7 +8,7 @@ La demo se ejecuta en la máquina del desarrollador. Docker hospeda únicamente 
 - `scripts/local/configure` — prepara los `.env.local` ignorados por Git.
 - `scripts/local/migrate` — aplica las migraciones de la base local.
 - `scripts/local/api`, `scripts/local/sandbox`, `scripts/local/admin` — inicia cada servicio.
-- `scripts/local/status` — comprueba contenedor y servicios locales.
+- `scripts/local/status` — muestra el estado del contenedor MongoDB local.
 - `scripts/local/smoke` — ejecuta verificaciones integradas con fixtures y MongoDB desechable.
 - `scripts/local/down` — detiene el contenedor de desarrollo.
 

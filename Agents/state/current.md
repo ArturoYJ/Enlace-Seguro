@@ -5,12 +5,12 @@
 
 ## Demo local — avance vigente — 2026-11-05
 
-- El cliente usa Expo SDK 58 para la versión instalada de Expo Go. Lint, typecheck, 94 pruebas y exports pasaron; la apertura y el flujo en iPhone aún no están comprobados. El usuario confirmó que Safari en el iPhone alcanza `/status` de Metro; queda resolver la apertura desde Expo Go.
+- El cliente usa Expo SDK 58. El usuario confirmó en iPhone registro de cuenta exclusiva de demo, login, navegación, análisis, historial y logout; informó que la interfaz se ve igual que la simulación. Persisten QA independiente contra Figma, VoiceOver y expiración de sesión en dispositivo.
 - La suite Mongo desechable pasó con una prueba adicional de paginación de auditoría HTTP, incluidos eventos con la misma fecha/hora. La consola pasó también navegación siguiente/anterior en Chromium con respuestas sintéticas; no equivale a una prueba UI con múltiples páginas reales.
 - Las cuatro fixtures locales (limpia, señal sospechosa, TLS inválido y timeout) pasaron por API/worker/Mongo/Sandbox reales en integración desechable; el timeout agotó cuatro intentos y terminó fallido sin veredicto. La excepción loopback y el deadline reducido aplican solo en el proceso de prueba.
 - Con servicios locales y cuenta admin de demo, el análisis de `https://expired.badssl.com/` terminó `inconclusive` sin objeto de veredicto. Es una comprobación puntual con URL pública, no validación de aislamiento productivo.
 - El APK documentado abajo es histórico, pertenece a SDK 57 y no tiene URL API; no representa la versión móvil actual. Regenerar solo tras estabilizar el flujo y probar conectividad HTTP Android.
-- APK ARM64 SDK58 generado y verificado: 47 MiB, package `com.anonymous.enlaceseguro`, target 36, debug-signed v2. Manifest contiene `usesCleartextTraffic=true` y Hermes bundle incluye API LAN `http://172.17.58.120:3000/api/v1`. SHA-256 `9c6e5ea8d8847858335ee808ab657508d258cd7532c87072949a71456670c72b`. No instalado ni probado en Android; solo ARM64, no universal. Ajustes de cleartext/minificación son exclusivamente para demo local.
+- APK ARM64 SDK58 regenerado con código actual: package `com.anonymous.enlaceseguro`, target 36, firma debug v2 verificada; bundle contiene API LAN configurada al compilar. SHA-256 `421efcbc195bb040abae4c31330e5fb23680ffde554e4fac2e05f1c3d1a13dd1`. No instalado ni probado en Android; solo ARM64. Cleartext y firma debug son exclusivamente para demo local.
 
 ## G0 — baseline histórico de producción, diferido para la entrega
 
