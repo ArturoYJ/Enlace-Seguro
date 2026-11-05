@@ -9,11 +9,18 @@ El Sandbox local navega por Internet y **no tiene el aislamiento de red producti
 Desde la raíz del repositorio, con Docker Desktop iniciado y Node 22 instalado:
 
 ```sh
+npm ci --prefix api
+npm ci --prefix sandbox
+npm ci --prefix frontend/mobile
+npm ci --prefix frontend/admin-console
+(cd frontend/admin-console && npx playwright install chromium)
 scripts/local/up
 scripts/local/configure
 scripts/local/migrate
 scripts/local/seed-admin
 ```
+
+La instalación de Playwright se necesita para el smoke de la consola. En este Mac, el Sandbox usa Google Chrome instalado; los requisitos pueden variar en otros sistemas.
 
 `configure` crea los cuatro `.env.local` y secretos sin sobrescribir los existentes. Fija `ANALYSIS_JOB_MAX_PENDING=20`, sincroniza el token API↔Sandbox, permite CORS solo desde `http://localhost:5173` y coloca el endpoint móvil en la IP LAN. Si no detecta la IP Wi-Fi, acepta la IPv4 LAN como argumento. `migrate` solo acepta la base vacía `enlaceseguro_dev`, aplica 001–006 con límite 20 y exige API/worker detenidos; si existe un estado parcial, detente e inspecciónalo: no borra ni continúa automáticamente. `seed-admin` conserva las credenciales locales y verifica el admin existente.
 
@@ -53,6 +60,17 @@ Si el iPhone no conecta, confirma IP, red, firewall y que `/status` de Metro y `
 4. Con los servicios anteriores ejecutándose, `scripts/local/smoke` revisa health, UI admin y la suite de integración con Mongo y fixtures desechables. No sustituye la prueba en el iPhone.
 
 El APK demo actual está en `frontend/mobile/android/app/build/outputs/apk/release/app-release.apk`: Expo SDK 58, solo ARM64, API LAN configurada en `.env.local` al compilar, target Android 36, firma debug (v2). Su SHA-256 actual es `421efcbc195bb040abae4c31330e5fb23680ffde554e4fac2e05f1c3d1a13dd1`. Verifica primero que la IP del Mac no haya cambiado. El paquete fue compilado, pero no se instaló ni probó en dispositivo Android. Para release/producción no reutilizarlo: requiere HTTPS y firma release; elimina `usesCleartextTraffic` y reevalúa minificación.
+
+Para repetir el build en este Mac, con Android SDK y OpenJDK 17 instalados, revisa primero la IP en `frontend/mobile/.env.local`. Después, desde `frontend/mobile/android/`:
+
+```sh
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+```
+
+El directorio `android/` es generado e ignorado por Git. En un checkout nuevo debe generarse con Expo prebuild antes del build; ese procedimiento desde cero aún no se ha verificado como parte de esta demo. No uses `--clean` sobre cambios nativos que quieras conservar. Recalcula el SHA-256 y verifica firma, arquitectura y URL LAN después de cada build.
 
 ## Purga local de capturas
 
