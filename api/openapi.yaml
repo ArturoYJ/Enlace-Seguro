@@ -115,6 +115,18 @@ paths:
                 $ref: '#/components/schemas/ProblemDetails'
         '429':
           description: Exceso de intentos de inicio de sesión
+          headers:
+            Retry-After:
+              description: Segundos que deben transcurrir antes de reintentar.
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '503':
+          description: El control de tasa compartido no está disponible; el login falla de forma cerrada.
           content:
             application/problem+json:
               schema:
@@ -235,6 +247,20 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
+        '503':
+          description: >-
+            Capacidad temporalmente agotada o almacenamiento de cola no disponible. La respuesta de
+            saturación incluye Retry-After; no se crea un intento ni se consume cuota diaria.
+          headers:
+            Retry-After:
+              description: Segundos sugeridos antes de volver a enviar la solicitud si la cola está llena.
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
 
     get:
       summary: Consulta de historial personal paginado de análisis
@@ -258,6 +284,7 @@ paths:
           description: Cursor opaco de paginación para continuar desde la última tupla
           schema:
             type: string
+            maxLength: 256
         - name: startDate
           in: query
           required: false
@@ -279,6 +306,45 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AnalysesListResponse'
+        '400':
+          description: Cursor o límite de paginación inválido
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: No autenticado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /analyses/summary:
+    get:
+      summary: Obtiene conteos personales de análisis recientes
+      description: >-
+        Retorna conteos solo del usuario autenticado en la ventana móvil exacta [now - 365×24 horas, now).
+        El total incluye intentos admitidos en cualquier estado; peligrosos y sospechosos cuentan solo
+        veredictos persistidos. No acepta filtros de propietario y omite URLs, IDs y datos de cuenta.
+      operationId: getPersonalAnalysisSummary
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Conteos personales del periodo móvil
+          headers:
+            Cache-Control:
+              schema: { type: string, example: 'private, no-store' }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAnalysisSummaryResponse'
+        '400':
+          description: La ruta no acepta parámetros de consulta
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
         '401':
           description: No autenticado
           content:
@@ -291,7 +357,7 @@ paths:
       summary: Consulta de detalle de un análisis
       description: >-
         Retorna el veredicto, razones, destino final, señales, redirecciones, fuentes de reputación
-        y referencia de captura del análisis especificado. El usuario solo puede consultar análisis propios,
+        del análisis especificado. La referencia interna de captura nunca se expone en este DTO. El usuario solo puede consultar análisis propios,
         mientras que el administrador puede acceder a cualquiera.
       operationId: getAnalysisDetail
       parameters:
@@ -330,25 +396,75 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
 
+  /analyses/{attemptId}/capture:
+    get:
+      summary: Obtiene una captura privada WebP del análisis propio
+      description: >-
+        Proxy autenticado hacia el Sandbox privado. Deshabilitado por defecto; habilitar solo tras verificar
+        el aislamiento de red API-Sandbox. Requiere propiedad del análisis incluso para administradores.
+        Un análisis no encontrado, ajeno o sin captura devuelve 404 indistinguible. La respuesta no se almacena en caché.
+      operationId: getAnalysisCapture
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Captura WebP privada
+          headers:
+            Cache-Control:
+              schema: { type: string, example: 'private, no-store' }
+            X-Content-Type-Options:
+              schema: { type: string, example: nosniff }
+          content:
+            image/webp:
+              schema: { type: string, format: binary }
+        '401':
+          description: No autenticado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '404':
+          description: Captura no disponible, inexistente o no propia; endpoint deshabilitado
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '503':
+          description: Servicio privado de capturas no disponible
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
   /admin/audit-events:
     get:
       summary: Consulta administrativa de eventos de auditoría de seguridad
       description: >-
         Permite a cuentas con rol 'admin' listar eventos de seguridad dentro de un rango temporal,
-        con filtro opcional por tipo de evento. Paginación mediante cursor.
+        con filtro opcional por tipo de evento. Paginación mediante cursor. startDate y endDate
+        son fechas civiles inclusivas de America/Mexico_City, alineadas con el endpoint de métricas;
+        internamente se convierten a [inicio local, inicio del día posterior) sobre occurredAt UTC.
+        Los instantes almacenados no se modifican.
       operationId: listAuditEvents
       parameters:
         - name: startDate
           in: query
           required: true
-          description: Fecha inicial del rango de búsqueda (YYYY-MM-DD)
+          description: Fecha civil inicial inclusiva en America/Mexico_City (YYYY-MM-DD)
           schema:
             type: string
             pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
         - name: endDate
           in: query
           required: true
-          description: Fecha final del rango de búsqueda (YYYY-MM-DD)
+          description: Fecha civil final inclusiva en America/Mexico_City (YYYY-MM-DD)
           schema:
             type: string
             pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
@@ -370,9 +486,10 @@ paths:
         - name: cursor
           in: query
           required: false
-          description: Cursor opaco de paginación
+          description: Cursor opaco devuelto por la página anterior; cursor malformado responde 400
           schema:
             type: string
+            maxLength: 128
       responses:
         '200':
           description: Lista de eventos de auditoría
@@ -392,13 +509,20 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
+        '400':
+          description: Parámetros de consulta inválidos
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
 
   /admin/metrics:
     get:
       summary: Consulta administrativa de métricas agregadas de uso y veredictos
       description: >-
         Calcula y retorna agregaciones de solicitudes recibidas, estados de procesamiento y
-        distribución de veredictos emitidos en el intervalo de fechas indicado. Solo accesible para administradores.
+        distribución de veredictos emitidos en el intervalo de fechas indicado. Las fechas son
+        días calendario `localDate` inclusivos en `America/Mexico_City`. Solo accesible para administradores.
       operationId: getAdminMetrics
       parameters:
         - name: startDate
@@ -430,6 +554,12 @@ paths:
                 $ref: '#/components/schemas/ProblemDetails'
         '403':
           description: Acceso denegado (requiere rol admin)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '400':
+          description: Parámetros de consulta inválidos
           content:
             application/problem+json:
               schema:
@@ -666,8 +796,8 @@ components:
         input:
           type: string
           minLength: 1
-          maxLength: 8192
-          description: URL o texto contenedor de URL a ser analizado de forma preventiva
+          maxLength: 65536
+          description: URL o texto contenedor de URL; backend limita a 65536 bytes UTF-8 y la persistencia cifra la entrada completa.
           example: 'https://enlace-sospechoso.example/login'
 
     AnalysisAdmissionResponse:
@@ -702,6 +832,10 @@ components:
 
     ProcessingStatus:
       type: string
+      description: >-
+        An inconclusive result means the system could not complete enough inspection to issue a verdict
+        (including an invalid TLS certificate for the document or subresources, or exceeding the browser
+        request budget for an analysis); it must not be interpreted as a finding that the URL is safe.
       enum:
         - received
         - validation_failed
@@ -739,16 +873,13 @@ components:
         submittedInput:
           type: string
           nullable: true
+          maxLength: 65536
           example: 'https://enlace-sospechoso.example/login'
         processingStatus:
           $ref: '#/components/schemas/ProcessingStatus'
-        verdict:
-          $ref: '#/components/schemas/Verdict'
+        analysis:
+          $ref: '#/components/schemas/AnalysisPayload'
           nullable: true
-        finalDestination:
-          type: string
-          nullable: true
-          example: 'https://enlace-sospechoso.example/login-phishing.php'
 
     AnalysesListResponse:
       type: object
@@ -863,12 +994,6 @@ components:
           example:
             - 'http://enlace-sospechoso.example'
             - 'https://enlace-sospechoso.example/login-phishing.php'
-        screenshotRef:
-          type: string
-          nullable: true
-          description: Referencia opaca o URL firmada temporal de acceso a la captura en almacenamiento privado
-          example: 'https://storage.enlaceseguro.internal/captures/c9bf9e57.webp'
-
     AnalysisDetailResponse:
       type: object
       required:
@@ -900,6 +1025,7 @@ components:
         submittedInput:
           type: string
           nullable: true
+          maxLength: 65536
         inputDigest:
           type: string
           pattern: '^[0-9a-f]{64}$'
@@ -1055,3 +1181,34 @@ components:
               type: integer
             sin_amenazas_detectadas:
               type: integer
+
+    UserAnalysisSummaryResponse:
+      type: object
+      additionalProperties: false
+      required: [window, total, dangerous, suspicious]
+      properties:
+        window:
+          type: object
+          additionalProperties: false
+          required: [startsAtInclusive, endsAtExclusive]
+          properties:
+            startsAtInclusive:
+              type: string
+              format: date-time
+              description: Límite inferior inclusivo de la ventana móvil de 365×24 horas.
+            endsAtExclusive:
+              type: string
+              format: date-time
+              description: Instante de cálculo; el límite superior es exclusivo.
+        total:
+          type: integer
+          minimum: 0
+          description: Intentos admitidos dentro de la ventana, sin importar su estado.
+        dangerous:
+          type: integer
+          minimum: 0
+          description: Intentos de la ventana con veredicto persistido peligroso.
+        suspicious:
+          type: integer
+          minimum: 0
+          description: Intentos de la ventana con veredicto persistido sospechoso.

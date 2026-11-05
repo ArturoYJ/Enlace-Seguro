@@ -9,6 +9,13 @@
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "test": "node --test --import tsx 'tests/**/*.test.ts'",
+    "test:browser": "node --test --test-concurrency=1 --import tsx 'browser-tests/**/*.browser.ts'",
+    "test:container-hardening": "bash tests/container-hardening-smoke.sh",
+    "test:egress-proxy": "bash egress-proxy/tests/integration.sh",
+    "test:egress-rebinding": "bash egress-proxy/tests/dns-rebinding.sh",
+    "test:dns-resolver-outage": "DNS_DROP_AFTER_A_QUERIES=2 bash egress-proxy/tests/dns-rebinding.sh",
+    "test:proxy-outage": "bash egress-proxy/tests/proxy-outage.sh",
+    "purge:captures": "node dist/operations/purgeCaptures.js",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
@@ -21,7 +28,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@fastify/cors": "^10.0.2",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1",
     "playwright": "^1.50.1"

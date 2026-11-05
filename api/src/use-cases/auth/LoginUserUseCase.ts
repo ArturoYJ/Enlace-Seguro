@@ -4,10 +4,12 @@ import { IRefreshTokenRepository } from '../../core/ports/IRefreshTokenRepositor
 import { ISecurityAuditRepository } from '../../core/ports/ISecurityAuditRepository.js';
 import { IPasswordHasher, ITokenService } from '../../core/ports/ISecurityServices.js';
 import { InvalidCredentialsError, AccountDisabledError } from '../../core/errors/DomainErrors.js';
+import { ILoginRateLimiter } from '../../core/ports/ILoginRateLimiter.js';
 
 export interface LoginUserInput {
   email: string;
   password: string;
+  clientIp: string;
   requestId?: string;
 }
 
@@ -28,31 +30,39 @@ export class LoginUserUseCase {
     private readonly securityAuditRepository: ISecurityAuditRepository,
     private readonly passwordHasher: IPasswordHasher,
     private readonly tokenService: ITokenService,
+    private readonly loginRateLimiter: ILoginRateLimiter,
     private readonly accessTokenExpiresInSeconds: number = 900,
     private readonly refreshTokenExpiresInDays: number = 7
   ) {}
 
   public async execute(input: LoginUserInput): Promise<TokenResponseDTO> {
     const emailNormalized = input.email.trim().toLowerCase();
+    const now = new Date();
+    await this.loginRateLimiter.consumeIpAttempt(input.clientIp, now);
+    // Reserve the shared account slot atomically before password verification so concurrent
+    // guesses cannot all pass a read-only threshold check at once.
+    await this.loginRateLimiter.consumeAccountAttempt(emailNormalized, now);
     const user = await this.userRepository.findByEmail(emailNormalized);
 
     if (!user) {
       await this.passwordHasher.compare(input.password, LoginUserUseCase.DUMMY_HASH);
-      await this.recordFailure(undefined, 'user_not_found', input.requestId);
+      await this.recordFailure(undefined, 'user_not_found', input.requestId, now);
       throw new InvalidCredentialsError();
     }
 
     if (!user.isActive()) {
       await this.passwordHasher.compare(input.password, user.passwordHash);
-      await this.recordFailure(user.id, 'account_disabled', input.requestId);
+      await this.recordFailure(user.id, 'account_disabled', input.requestId, now);
       throw new AccountDisabledError();
     }
 
     const isPasswordValid = await this.passwordHasher.compare(input.password, user.passwordHash);
     if (!isPasswordValid) {
-      await this.recordFailure(user.id, 'invalid_password', input.requestId);
+      await this.recordFailure(user.id, 'invalid_password', input.requestId, now);
       throw new InvalidCredentialsError();
     }
+
+    await this.loginRateLimiter.clearAccountFailures(emailNormalized);
 
     const accessToken = this.tokenService.generateAccessToken({
       userId: user.id,
@@ -63,7 +73,6 @@ export class LoginUserUseCase {
     const rawRefreshToken = this.tokenService.generateRefreshToken();
     const tokenHash = this.tokenService.hashToken(rawRefreshToken);
     const familyId = randomUUID();
-    const now = new Date();
     const expiresAt = new Date(now.getTime() + this.refreshTokenExpiresInDays * 24 * 60 * 60 * 1000);
 
     await this.refreshTokenRepository.create({
@@ -95,8 +104,12 @@ export class LoginUserUseCase {
     };
   }
 
-  private async recordFailure(actorId?: string, reasonCode?: string, requestId?: string): Promise<void> {
-    const now = new Date();
+  private async recordFailure(
+    actorId: string | undefined,
+    reasonCode: string,
+    requestId: string | undefined,
+    now: Date
+  ): Promise<void> {
     await this.securityAuditRepository.record({
       occurredAt: now,
       purgeAt: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000),
@@ -107,7 +120,7 @@ export class LoginUserUseCase {
       outcome: 'failure',
       resourceType: 'session',
       requestId,
-      metadata: reasonCode ? { reasonCode } : undefined
+      metadata: { reasonCode }
     });
   }
 }

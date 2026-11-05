@@ -1,12 +1,13 @@
 import { IUserRepository, CreateUserData } from '../../src/core/ports/IUserRepository.js';
 import { IRefreshTokenRepository, CreateRefreshTokenData } from '../../src/core/ports/IRefreshTokenRepository.js';
 import { ISecurityAuditRepository, RecordAuditEventData, ListAuditEventsFilter, PaginatedAuditEventsResult } from '../../src/core/ports/ISecurityAuditRepository.js';
-import { IDailyAnalysisRepository, AdmissionResult, ListUserAttemptsOptions, PaginatedAttemptsResult, AdminMetricsResult } from '../../src/core/ports/IDailyAnalysisRepository.js';
+import { IDailyAnalysisRepository, AdmissionResult, ListUserAttemptsOptions, PaginatedAttemptsResult, AdminMetricsResult, UserAnalysisSummaryCounts, AnalysisQueueSnapshot, ClaimedAnalysisJob, RetryClaimResult } from '../../src/core/ports/IDailyAnalysisRepository.js';
 import { IPasswordHasher } from '../../src/core/ports/ISecurityServices.js';
 import { User } from '../../src/core/entities/User.js';
 import { RefreshToken } from '../../src/core/entities/RefreshToken.js';
 import { DailyAnalysis, AttemptProps } from '../../src/core/entities/Analysis.js';
 import { SecurityAuditEvent } from '../../src/core/entities/SecurityAuditEvent.js';
+import { ILoginRateLimiter } from '../../src/core/ports/ILoginRateLimiter.js';
 
 export class MockUserRepository implements IUserRepository {
   public users: User[] = [];
@@ -122,6 +123,7 @@ export class MockSecurityAuditRepository implements ISecurityAuditRepository {
 
 export class MockDailyAnalysisRepository implements IDailyAnalysisRepository {
   public records: DailyAnalysis[] = [];
+  private readonly jobStates = new Map<string, { state: 'queued' | 'leased' | 'completed' | 'dead'; attemptCount: number; availableAt: Date; leaseToken?: string; leaseExpiresAt?: Date }>();
 
   public async admitAttemptAtomic(
     userId: string,
@@ -150,6 +152,7 @@ export class MockDailyAnalysisRepository implements IDailyAnalysisRepository {
     }
 
     daily.attempts.push(attempt);
+    this.jobStates.set(attempt.attemptId, { state: 'queued', attemptCount: 0, availableAt: attempt.receivedAt });
     return { success: true, attempt };
   }
 
@@ -163,8 +166,100 @@ export class MockDailyAnalysisRepository implements IDailyAnalysisRepository {
     if (!daily) return false;
     const attempt = daily.attempts.find((a) => a.attemptId === attemptId);
     if (!attempt) return false;
+    if (updates.processingStatus !== undefined) {
+      const expectedStatus = updates.processingStatus === 'processing' || updates.processingStatus === 'validation_failed'
+        ? 'received'
+        : updates.processingStatus === 'received'
+          ? null
+          : 'processing';
+      if (attempt.processingStatus !== expectedStatus) return false;
+    }
     Object.assign(attempt, updates);
     return true;
+  }
+
+  public async claimNextAnalysisJob(workerId: string, now: Date, leaseDurationMs: number, _maxAttempts = 10): Promise<ClaimedAnalysisJob | null> {
+    for (const daily of this.records) {
+      for (const attempt of daily.attempts) {
+        const queue = this.jobStates.get(attempt.attemptId);
+        if (!queue || queue.availableAt > now || attempt.processingStatus === 'completed' || attempt.processingStatus === 'failed' || attempt.processingStatus === 'inconclusive') continue;
+        if (queue.state === 'leased' && queue.leaseExpiresAt && queue.leaseExpiresAt > now) continue;
+        const leaseToken = `lease-${Math.random()}`;
+        queue.state = 'leased';
+        queue.attemptCount += 1;
+        queue.leaseToken = leaseToken;
+        queue.leaseExpiresAt = new Date(now.getTime() + leaseDurationMs);
+        attempt.processingStatus = 'processing';
+        attempt.updatedAt = now;
+        if (!attempt.submittedInput) return null;
+        return { userId: daily.userId, localDate: daily.localDate, attemptId: attempt.attemptId, leaseToken, attemptNumber: queue.attemptCount, targetUrl: attempt.submittedInput };
+      }
+    }
+    return null;
+  }
+
+  private getClaim(job: ClaimedAnalysisJob) {
+    const daily = this.records.find((record) => record.userId === job.userId && record.localDate === job.localDate);
+    const attempt = daily?.attempts.find((item) => item.attemptId === job.attemptId);
+    const queue = this.jobStates.get(job.attemptId);
+    if (!daily || !attempt || !queue || queue.leaseToken !== job.leaseToken || attempt.processingStatus !== 'processing') return null;
+    return { daily, attempt, queue };
+  }
+
+  public async completeClaimedAnalysisJob(job: ClaimedAnalysisJob, completedAt: Date, analysis: AttemptProps['analysis']): Promise<boolean> {
+    const claim = this.getClaim(job);
+    if (!claim || !analysis) return false;
+    claim.attempt.processingStatus = 'completed';
+    claim.attempt.updatedAt = completedAt;
+    claim.attempt.completedAt = completedAt;
+    claim.attempt.analysis = analysis;
+    claim.queue.state = 'completed';
+    delete claim.queue.leaseToken;
+    return true;
+  }
+
+  public async retryClaimedAnalysisJob(job: ClaimedAnalysisJob, now: Date, nextAttemptAt: Date, _reasonCode: string, maxAttempts: number): Promise<RetryClaimResult> {
+    const claim = this.getClaim(job);
+    if (!claim) return 'stale';
+    if (job.attemptNumber >= maxAttempts) {
+      await this.failClaimedAnalysisJob(job, now, 'failed', 'retry_exhausted');
+      return 'exhausted';
+    }
+    claim.queue.state = 'queued';
+    claim.queue.availableAt = nextAttemptAt;
+    claim.attempt.updatedAt = now;
+    delete claim.queue.leaseToken;
+    delete claim.queue.leaseExpiresAt;
+    return 'rescheduled';
+  }
+
+  public async failClaimedAnalysisJob(job: ClaimedAnalysisJob, completedAt: Date, status: 'failed' | 'inconclusive', _reasonCode: string): Promise<boolean> {
+    const claim = this.getClaim(job);
+    if (!claim) return false;
+    claim.attempt.processingStatus = status;
+    claim.attempt.updatedAt = completedAt;
+    claim.attempt.completedAt = completedAt;
+    claim.queue.state = 'dead';
+    delete claim.queue.leaseToken;
+    return true;
+  }
+
+  public async getAnalysisQueueSnapshot(now: Date): Promise<AnalysisQueueSnapshot> {
+    const jobs = [...this.jobStates.entries()];
+    const active = jobs.filter(([, job]) => job.state === 'queued' || job.state === 'leased');
+    const pendingDates = this.records.flatMap((daily) => daily.attempts
+      .filter((attempt) => active.some(([attemptId]) => attemptId === attempt.attemptId))
+      .map((attempt) => attempt.receivedAt.getTime()));
+    return {
+      pendingCount: active.length,
+      maxPending: 1000,
+      queuedCount: active.filter(([, job]) => job.state === 'queued').length,
+      leasedCount: active.filter(([, job]) => job.state === 'leased').length,
+      expiredLeaseCount: active.filter(([, job]) => job.state === 'leased' && job.leaseExpiresAt !== undefined && job.leaseExpiresAt <= now).length,
+      retryingCount: active.filter(([, job]) => job.attemptCount > 1).length,
+      deadCount: jobs.filter(([, job]) => job.state === 'dead').length,
+      oldestPendingAgeMs: pendingDates.length ? Math.max(0, now.getTime() - Math.min(...pendingDates)) : null
+    };
   }
 
   public async findDailyAnalysis(userId: string, localDate: string): Promise<DailyAnalysis | null> {
@@ -214,6 +309,14 @@ export class MockDailyAnalysisRepository implements IDailyAnalysisRepository {
       byVerdict: {}
     };
   }
+
+  public async getUserAnalysisSummary(
+    _userId: string,
+    _startsAtInclusive: Date,
+    _endsAtExclusive: Date
+  ): Promise<UserAnalysisSummaryCounts> {
+    return { total: 0, dangerous: 0, suspicious: 0 };
+  }
 }
 
 export class MockPasswordHasher implements IPasswordHasher {
@@ -223,5 +326,33 @@ export class MockPasswordHasher implements IPasswordHasher {
 
   public async compare(password: string, hash: string): Promise<boolean> {
     return hash === `hashed_${password}`;
+  }
+}
+
+export class MockLoginRateLimiter implements ILoginRateLimiter {
+  public ipAttempts: string[] = [];
+  public accountFailures: string[] = [];
+  public checkedAccounts: string[] = [];
+  public clearedAccounts: string[] = [];
+  public blockedIp = false;
+  public blockedAccount = false;
+  public unavailable = false;
+
+  public async consumeIpAttempt(sourceIp: string): Promise<void> {
+    if (this.unavailable) throw new Error('Rate limit storage unavailable');
+    if (this.blockedIp) throw new Error('Rate limited');
+    this.ipAttempts.push(sourceIp);
+  }
+
+  public async consumeAccountAttempt(emailNormalized: string): Promise<void> {
+    if (this.unavailable) throw new Error('Rate limit storage unavailable');
+    if (this.blockedAccount) throw new Error('Rate limited');
+    this.checkedAccounts.push(emailNormalized);
+    this.accountFailures.push(emailNormalized);
+  }
+
+  public async clearAccountFailures(emailNormalized: string): Promise<void> {
+    if (this.unavailable) throw new Error('Rate limit storage unavailable');
+    this.clearedAccounts.push(emailNormalized);
   }
 }

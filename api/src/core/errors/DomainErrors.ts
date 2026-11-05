@@ -86,11 +86,65 @@ export class QuotaExceededError extends DomainError {
   }
 }
 
+export class RateLimitExceededError extends DomainError {
+  public readonly code = 'RATE_LIMIT_EXCEEDED';
+  public readonly statusCode = 429;
+
+  constructor(public readonly retryAfterSeconds: number) {
+    super('Too many requests', 'Too many access attempts. Wait before trying again.');
+  }
+}
+
+export class LoginRateLimitUnavailableError extends DomainError {
+  public readonly code = 'LOGIN_RATE_LIMIT_UNAVAILABLE';
+  public readonly statusCode = 503;
+
+  constructor() {
+    super('Login temporarily unavailable', 'Access is temporarily unavailable. Try again later.');
+  }
+}
+
+export class AnalysisQueueCapacityExceededError extends DomainError {
+  public readonly code = 'ANALYSIS_QUEUE_CAPACITY_EXCEEDED';
+  public readonly statusCode = 503;
+
+  constructor(public readonly retryAfterSeconds = 5) {
+    super('Analysis service busy', 'Analysis capacity is temporarily full. Try again later.');
+  }
+}
+
+export class AnalysisQueueUnavailableError extends DomainError {
+  public readonly code = 'ANALYSIS_QUEUE_UNAVAILABLE';
+  public readonly statusCode = 503;
+
+  constructor() {
+    super('Analysis service unavailable', 'Analysis capacity is temporarily unavailable. Try again later.');
+  }
+}
+
+export class CaptureUnavailableError extends DomainError {
+  public readonly code = 'CAPTURE_UNAVAILABLE';
+  public readonly statusCode = 503;
+
+  constructor() {
+    super('Capture temporarily unavailable', 'The capture service is temporarily unavailable. Try again later.');
+  }
+}
+
 export class ValidationError extends DomainError {
   public readonly code = 'VALIDATION_FAILED';
   public readonly statusCode = 400;
 
   constructor(detail: string, public readonly invalidParams?: Array<{ name: string; reason: string }>) {
     super('Validation failed', detail);
+  }
+}
+export class SandboxServiceError extends Error {
+  constructor(
+    public readonly reasonCode: string,
+    public readonly retryable: boolean
+  ) {
+    super(reasonCode);
+    this.name = 'SandboxServiceError';
   }
 }

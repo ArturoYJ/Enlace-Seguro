@@ -20,4 +20,4 @@ El usuario confirmó MongoDB para la actividad BDaaS y aprobó el esquema propue
 
 ## Ejecución y estado
 
-No ejecutar el script contra una BD con datos reales. Primera verificación prevista: un MongoDB 8.0.x de prueba limpio, carga de casos válidos/ inválidos de `validation-cases.md`, prueba de índices únicos/TTL y confirmación de rechazo por validador. Hasta completar eso, los validadores son artefactos preparados pero no comprobados por MongoDB.
+No ejecutar el script contra una BD con datos reales. La matriz inicial y el smoke se comprobaron contra MongoDB 8.0.34 efímero; ver `../operations/mongodb-production-validation-plan.md` y `../tests/run-mongodb-suite.sh`. Faltan casos no cubiertos y la comprobación en cualquier entorno persistente.

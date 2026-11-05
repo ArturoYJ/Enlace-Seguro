@@ -43,7 +43,7 @@ describe('VerdictEvaluator', () => {
     });
 
     assert.equal(result.verdict, 'sospechoso');
-    assert.ok(result.reasons.some((r) => r.includes('redirecciones encadenadas')));
+    assert.ok(result.reasons.some((r) => r.includes('múltiples redirecciones HTTP')));
   });
 
   it('should categorize cross-domain redirects as sospechoso', () => {
@@ -68,5 +68,22 @@ describe('VerdictEvaluator', () => {
 
     assert.equal(result.verdict, 'sin_amenazas_detectadas');
     assert.ok(result.reasons.some((r) => r.includes('no constituye garantía de seguridad absoluta')));
+  });
+
+  it('refuses to turn TLS certificate failures into a security verdict', () => {
+    assert.throws(
+      () => VerdictEvaluator.evaluate({
+        targetUrl: 'https://invalid-cert.example', finalDestination: 'https://invalid-cert.example',
+        redirects: [], signals: ['tls_certificate_validation_failed']
+      }),
+      /must terminate as inconclusive/
+    );
+    assert.throws(
+      () => VerdictEvaluator.evaluate({
+        targetUrl: 'https://invalid-cert.example', finalDestination: 'https://invalid-cert.example',
+        redirects: [], signals: ['untrusted_tls_certificate']
+      }),
+      /must terminate as inconclusive/
+    );
   });
 });

@@ -7,6 +7,9 @@ export interface SsrfValidationResult {
   reason?: string;
 }
 
+type DnsAddress = { address: string; family: number };
+type DnsResolver = (hostname: string) => Promise<DnsAddress[]>;
+
 export class AntiSsrfGuard {
   private static readonly BLOCKED_HOSTNAMES = new Set([
     'localhost',
@@ -52,7 +55,10 @@ export class AntiSsrfGuard {
     return { valid: true, parsedUrl: parsed };
   }
 
-  public static async validateDestination(parsedUrl: URL): Promise<SsrfValidationResult> {
+  public static async validateDestination(
+    parsedUrl: URL,
+    resolveAll: DnsResolver = (hostname) => dns.lookup(hostname, { all: true })
+  ): Promise<SsrfValidationResult> {
     const hostname = parsedUrl.hostname.toLowerCase();
 
     // If hostname is directly an IP literal
@@ -69,7 +75,7 @@ export class AntiSsrfGuard {
 
     // Resolve DNS
     try {
-      const records = await dns.lookup(hostname, { all: true });
+      const records = await resolveAll(hostname);
       if (!records || records.length === 0) {
         return {
           safe: false,
@@ -176,6 +182,19 @@ export class AntiSsrfGuard {
       if (net.isIPv4(ipv4Part)) {
         return this.isPrivateOrReservedIpv4(ipv4Part);
       }
+
+      // URL/DNS parsers commonly canonicalize mapped IPv4 literals to two
+      // hexadecimal words (for example ::ffff:7f00:1 for 127.0.0.1).
+      const words = ipv4Part.split(':');
+      if (words.length === 2 && words.every((word) => /^[0-9a-f]{1,4}$/.test(word))) {
+        const high = Number.parseInt(words[0] ?? '', 16);
+        const low = Number.parseInt(words[1] ?? '', 16);
+        const embeddedIpv4 = [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.');
+        return this.isPrivateOrReservedIpv4(embeddedIpv4);
+      }
+
+      // A malformed mapped representation must fail closed.
+      return true;
     }
 
     // Unique Local Addresses (fc00::/7 -> fc00 to fdff)

@@ -1,14 +1,17 @@
-export type AuditEventType =
-  | 'auth.login.succeeded'
-  | 'auth.login.failed'
-  | 'authz.denied'
-  | 'account.registered'
-  | 'analysis.accepted'
-  | 'analysis.validation_failed'
-  | 'analysis.completed'
-  | 'analysis.inconclusive'
-  | 'analysis.failed'
-  | 'admin.audit.read';
+export const AUDIT_EVENT_TYPES = [
+  'auth.login.succeeded',
+  'auth.login.failed',
+  'authz.denied',
+  'account.registered',
+  'analysis.accepted',
+  'analysis.validation_failed',
+  'analysis.completed',
+  'analysis.inconclusive',
+  'analysis.failed',
+  'admin.audit.read'
+] as const;
+
+export type AuditEventType = typeof AUDIT_EVENT_TYPES[number];
 
 export type AuditEventOutcome = 'success' | 'failure' | 'denied' | 'partial';
 

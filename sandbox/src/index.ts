@@ -7,14 +7,22 @@ async function main() {
   const port = parseInt(process.env['PORT'] || '3001', 10);
   const host = process.env['HOST'] || '0.0.0.0';
   const concurrency = parseInt(process.env['MAX_CONCURRENCY'] || '3', 10);
+  const analysisDeadlineMs = Number(process.env['SANDBOX_ANALYSIS_DEADLINE_MS'] ?? 25_000);
+  if (!Number.isInteger(analysisDeadlineMs) || analysisDeadlineMs < 1_000 || analysisDeadlineMs > 28_000) {
+    throw new Error('SANDBOX_ANALYSIS_DEADLINE_MS must be an integer between 1000 and 28000 milliseconds.');
+  }
+  const serviceToken = process.env['SANDBOX_SERVICE_TOKEN'];
+  if (!serviceToken || Buffer.byteLength(serviceToken, 'utf8') < 32 || /\s/.test(serviceToken)) {
+    throw new Error('SANDBOX_SERVICE_TOKEN must be configured with at least 32 UTF-8 bytes and no whitespace.');
+  }
 
   const storage = new LocalScreenshotStorage();
   await storage.init();
 
-  const pool = new PlaywrightContextPool(storage, concurrency);
+  const pool = new PlaywrightContextPool(storage, concurrency, undefined, undefined, analysisDeadlineMs);
   await pool.init();
 
-  const app = buildSandboxServer({ pool, storage });
+  const app = buildSandboxServer({ pool, storage, serviceToken });
 
   const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
   for (const signal of signals) {

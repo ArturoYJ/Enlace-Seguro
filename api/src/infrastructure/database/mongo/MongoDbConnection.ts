@@ -3,6 +3,7 @@ import { MongoClient, Db } from 'mongodb';
 export class MongoDbConnection {
   private client: MongoClient | null = null;
   private db: Db | null = null;
+  private connected = false;
 
   constructor(
     private readonly uri: string,
@@ -10,26 +11,43 @@ export class MongoDbConnection {
   ) {}
 
   public async connect(): Promise<Db> {
-    if (this.db) {
+    if (this.connected && this.db) {
       return this.db;
     }
 
-    this.client = new MongoClient(this.uri, {
-      maxPoolSize: 20,
-      minPoolSize: 5,
-      serverSelectionTimeoutMS: 5000
-    });
+    if (!this.client) {
+      this.client = new MongoClient(this.uri, {
+        maxPoolSize: 20,
+        minPoolSize: 5,
+        serverSelectionTimeoutMS: 5000
+      });
+      this.db = this.client.db(this.dbName);
+    }
 
-    await this.client.connect();
-    this.db = this.client.db(this.dbName);
-    return this.db;
+    const client = this.client;
+    if (!client) throw new Error('MongoDB client was not initialized.');
+    await client.connect();
+    this.connected = true;
+    return this.db ?? client.db(this.dbName);
   }
 
   public getDatabase(): Db {
-    if (!this.db) {
-      throw new Error('Database connection has not been initialized. Call connect() first.');
+    if (this.db) return this.db;
+    if (this.client) return this.client.db(this.dbName);
+    throw new Error('Database connection has not been initialized. Call connect() first.');
+  }
+
+  public getClient(): MongoClient {
+    if (!this.client) throw new Error('MongoDB client has not been initialized. Call connect() first.');
+    return this.client;
+  }
+
+  public async assertReplicaSetReady(): Promise<void> {
+    if (!this.db) throw new Error('MongoDB database has not been initialized.');
+    const hello = await this.db.admin().command({ hello: 1 });
+    if (typeof hello['setName'] !== 'string' || hello['isWritablePrimary'] !== true) {
+      throw new Error('MongoDB must be a writable replica-set primary to support transactional analysis capacity.');
     }
-    return this.db;
   }
 
   public async disconnect(): Promise<void> {
@@ -37,6 +55,7 @@ export class MongoDbConnection {
       await this.client.close();
       this.client = null;
       this.db = null;
+      this.connected = false;
     }
   }
 

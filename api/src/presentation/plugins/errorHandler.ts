@@ -1,5 +1,11 @@
-import { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
-import { DomainError, ValidationError } from '../../core/errors/DomainErrors.js';
+import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
+import { AnalysisQueueCapacityExceededError, DomainError, RateLimitExceededError, ValidationError } from '../../core/errors/DomainErrors.js';
+
+export function requestPathWithoutQuery(requestTarget: string): string {
+  const queryIndex = requestTarget.indexOf('?');
+  const path = queryIndex === -1 ? requestTarget : requestTarget.slice(0, queryIndex);
+  return path || '/';
+}
 
 export interface ProblemDetailsResponse {
   type: string;
@@ -11,7 +17,7 @@ export interface ProblemDetailsResponse {
 }
 
 export function errorHandler(error: FastifyError | Error, request: FastifyRequest, reply: FastifyReply): void {
-  const instance = request.url;
+  const instance = requestPathWithoutQuery(request.url);
 
   if (error instanceof DomainError) {
     const problem: ProblemDetailsResponse = {
@@ -26,7 +32,11 @@ export function errorHandler(error: FastifyError | Error, request: FastifyReques
       problem.invalidParams = error.invalidParams;
     }
 
-    reply.status(error.statusCode).header('content-type', 'application/problem+json').send(problem);
+    reply.status(error.statusCode).header('content-type', 'application/problem+json');
+    if (error instanceof RateLimitExceededError || error instanceof AnalysisQueueCapacityExceededError) {
+      reply.header('retry-after', String(Math.max(1, Math.ceil(error.retryAfterSeconds))));
+    }
+    reply.send(problem);
     return;
   }
 
@@ -59,7 +69,12 @@ export function errorHandler(error: FastifyError | Error, request: FastifyReques
   }
 
   // Generic Uncaught Exception (500)
-  request.log.error(error, 'Unhandled internal server error');
+  request.log.error({
+    requestId: request.id,
+    method: request.method,
+    path: instance,
+    statusCode: 500
+  }, 'Unhandled internal server error');
 
   const problem: ProblemDetailsResponse = {
     type: 'https://api.enlaceseguro.internal/errors/internal-server-error',

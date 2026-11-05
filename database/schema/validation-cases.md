@@ -1,6 +1,6 @@
 # Matriz de pruebas para validadores MongoDB
 
-**Estado:** casos diseñados; no se han ejecutado en MongoDB. Correr en una instancia de prueba limpia compatible con MongoDB 8.0.x antes de usar los validadores.
+**Estado:** 55 aserciones adicionales de validación + 22 smoke assertions pasaron en MongoDB 8.0.34 efímero mediante `../tests/run-mongodb-suite.sh`; incluye el sobre cifrado, estados de job, intentos/reasonCode y lease token. Quedan invariantes fuera de JSON Schema, límites BSON máximos y validación en otros entornos.
 
 ## Casos comunes
 
@@ -27,8 +27,10 @@
 |---|---|
 | Documento con 0 a 5 intentos y UUID v4 canónicos | Aceptado si cumple el resto del contrato |
 | `attempts` con seis elementos, status desconocido, ID UUID no canónico o `purgeAt` ausente | Rechazado |
-| Intento admitido con `inputDigest` SHA-256 hex y `inputSizeBytes`; `submittedInput` está presente solo si el original está dentro del tope | Aceptado |
-| Solicitud recibida que excede 8 KiB UTF-8 | Backend admite/cuota primero; guarda hash y longitud, omite `submittedInput`, marca `validation_failed`; no guarda/trunca el contenido largo |
+| Intento con `inputDigest`, `inputSizeBytes` y `submittedInputEncrypted` AES-256-GCM válido para entrada hasta 64 KiB UTF-8 | Aceptado; adapter de Mongo cifra previo a escritura y descifra solo en backend autenticado |
+| Registro histórico con `submittedInput` plaintext de hasta 8192 caracteres | Aceptado para compatibilidad; no escribir plaintext en intentos nuevos |
+| Sobre cifrado sin campo requerido, algoritmo/llave no permitidos, IV/tag/ciphertext fuera del formato o propiedades extra | Rechazado |
+| Solicitud de entrada vacía o superior a 64 KiB UTF-8 | Rechazada por backend antes de admisión; no persiste raw ni consume cuota |
 | Estado `validation_failed` sin `analysis` | Aceptado; el resultado analítico puede no existir tras error de validación |
 | `completed` sin `analysis` | El validador estructural actual lo acepta; la API debe imponer la regla condicional |
 | Dos documentos diarios del mismo `{userId, localDate}` | Segundo rechazo por índice único |
@@ -72,7 +74,7 @@
 
 - Insertar documentos con `purgeAt` en el pasado y verificar que el proceso TTL los elimina eventualmente, no asumir borrado inmediato.
 - Verificar que endpoints excluyan datos vencidos incluso antes del borrado físico.
-- Validar que `daily_analyses.purgeAt` corresponda al fin del día local más la ventana de 365 días, `security_audit_events.purgeAt` a 90 días y el `purgeAt` de caché a la fecha más tardía entre sus fuentes.
+- Validar que `daily_analyses.purgeAt = max(attempts.receivedAt) + 366 días`, que una nueva admisión avance ese TTL y que la migración de documentos existentes use el intento más reciente, no la fecha de migración. Por bucket diario compartido, intentos previos pueden persistir hasta <24 h extra; ninguno debe purgarse antes de 366 días. Verificar límites de `GET /analyses/summary` en `[now − 365×24 h, now)`. Auditoría conserva 90 días; caché vence con la expiración más tardía entre sus fuentes.
 - La captura externa expira en su almacenamiento privado a 30 días; la base solo conserva una referencia y no purga el objeto externo.
 
 ## Invariantes fuera de `$jsonSchema`

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { IDailyAnalysisRepository } from '../../core/ports/IDailyAnalysisRepository.js';
 import { ISecurityAuditRepository } from '../../core/ports/ISecurityAuditRepository.js';
-import { QuotaExceededError, ValidationError } from '../../core/errors/DomainErrors.js';
+import { AnalysisQueueCapacityExceededError, QuotaExceededError, ValidationError } from '../../core/errors/DomainErrors.js';
 import { getLocalDate } from '../../core/utils/dateUtils.js';
 import { AttemptProps, ProcessingStatus } from '../../core/entities/Analysis.js';
 
@@ -52,7 +52,7 @@ export class SubmitAnalysisUseCase {
       processingStatus: 'received',
       inputDigest,
       inputSizeBytes,
-      submittedInput: inputSizeBytes <= 8192 ? trimmedInput : undefined
+      submittedInput: trimmedInput
     };
 
     const admission = await this.dailyAnalysisRepository.admitAttemptAtomic(
@@ -63,6 +63,9 @@ export class SubmitAnalysisUseCase {
     );
 
     if (!admission.success) {
+      if (admission.reason === 'capacity_exceeded') {
+        throw new AnalysisQueueCapacityExceededError();
+      }
       if (admission.reason === 'quota_exceeded') {
         throw new QuotaExceededError(this.dailyLimit, this.timezone);
       }

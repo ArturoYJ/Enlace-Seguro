@@ -1,7 +1,7 @@
-import Fastify, { FastifyInstance } from 'fastify';
+import Fastify, { LogController, type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import sensible from '@fastify/sensible';
-import { errorHandler } from './plugins/errorHandler.js';
+import { errorHandler, requestPathWithoutQuery } from './plugins/errorHandler.js';
 import { authPlugin } from './plugins/authPlugin.js';
 import { registerHealthRoutes } from './routes/healthRoutes.js';
 import { registerAuthRoutes, AuthRoutesDependencies } from './routes/authRoutes.js';
@@ -10,6 +10,7 @@ import { registerAdminRoutes, AdminRoutesDependencies } from './routes/adminRout
 import { ITokenService } from '../core/ports/ISecurityServices.js';
 import { ISandboxService } from '../core/ports/ISandboxService.js';
 import { MongoDbConnection } from '../infrastructure/database/mongo/MongoDbConnection.js';
+import { parseCorsAllowedOrigins } from './config/corsPolicy.js';
 
 export interface ServerDependencies {
   mongoConnection: MongoDbConnection;
@@ -18,33 +19,46 @@ export interface ServerDependencies {
   authDeps: AuthRoutesDependencies;
   analysisDeps: AnalysisRoutesDependencies;
   adminDeps: AdminRoutesDependencies;
+  loggerStream?: { write(message: string): void };
+  corsAllowedOrigins?: string;
+  environment?: string;
 }
 
 export function buildServer(deps: ServerDependencies): FastifyInstance {
+  const allowedOrigins = parseCorsAllowedOrigins(
+    deps.corsAllowedOrigins ?? process.env['CORS_ALLOWED_ORIGINS'] ?? '',
+    (deps.environment ?? process.env['NODE_ENV']) === 'production'
+  );
+  const trustedProxyCidrs = (process.env['TRUST_PROXY_CIDRS'] ?? '')
+    .split(',')
+    .map((cidr) => cidr.trim())
+    .filter(Boolean);
   const server = Fastify({
+    trustProxy: trustedProxyCidrs.length > 0 ? trustedProxyCidrs : false,
     logger: {
       level: process.env['LOG_LEVEL'] || 'info',
+      ...(deps.loggerStream ? { stream: deps.loggerStream } : {}),
       serializers: {
         req(req) {
           return {
             method: req.method,
-            url: req.url,
-            hostname: req.hostname,
-            remoteAddress: req.ip
+            url: requestPathWithoutQuery(req.url),
+            hostname: req.hostname
           };
         }
       }
     },
-    disableRequestLogging: false
+    logController: new LogController({ disableRequestLogging: false })
   });
 
   server.setErrorHandler(errorHandler);
 
   server.register(sensible);
   server.register(cors, {
-    origin: true,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    origin: allowedOrigins.length > 0 ? allowedOrigins : false,
+    credentials: false,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type']
   });
 
   server.register(authPlugin, {

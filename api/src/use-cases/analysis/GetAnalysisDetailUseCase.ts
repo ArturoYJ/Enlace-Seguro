@@ -52,6 +52,9 @@ export class GetAnalysisDetailUseCase {
     }
 
     const { attempt, dailyAnalysis } = matchResult;
+    const publicAnalysis = attempt.analysis
+      ? Object.fromEntries(Object.entries(attempt.analysis).filter(([key]) => key !== 'screenshotRef')) as AttemptProps['analysis']
+      : undefined;
 
     return {
       attemptId: attempt.attemptId,
@@ -63,7 +66,7 @@ export class GetAnalysisDetailUseCase {
       submittedInput: attempt.submittedInput,
       inputDigest: attempt.inputDigest,
       inputSizeBytes: attempt.inputSizeBytes,
-      analysis: attempt.analysis
+      analysis: publicAnalysis
     };
   }
 }

@@ -31,6 +31,7 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRoutesDep
     const result = await deps.loginUserUseCase.execute({
       email: email ?? '',
       password: password ?? '',
+      clientIp: request.ip,
       requestId: request.id
     });
     return reply.status(200).send(result);

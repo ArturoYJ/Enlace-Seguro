@@ -1,31 +1,62 @@
-import { IDailyAnalysisRepository } from '../../core/ports/IDailyAnalysisRepository.js';
+import { ClaimedAnalysisJob, IDailyAnalysisRepository } from '../../core/ports/IDailyAnalysisRepository.js';
 import { ISecurityAuditRepository } from '../../core/ports/ISecurityAuditRepository.js';
 import { ISandboxService } from '../../core/ports/ISandboxService.js';
 import { AnalysisPayload } from '../../core/entities/Analysis.js';
-
-export interface ProcessAnalysisJobInput {
-  userId: string;
-  localDate: string;
-  attemptId: string;
-  targetUrl: string;
-}
+import { SandboxServiceError } from '../../core/errors/DomainErrors.js';
 
 export class ProcessAnalysisJobUseCase {
   constructor(
     private readonly dailyAnalysisRepository: IDailyAnalysisRepository,
     private readonly securityAuditRepository: ISecurityAuditRepository,
-    private readonly sandboxService: ISandboxService
+    private readonly sandboxService: ISandboxService,
+    private readonly maxAttempts = 4
   ) {}
 
-  public async execute(input: ProcessAnalysisJobInput): Promise<void> {
-    // 1. Transition attempt to 'processing'
-    await this.dailyAnalysisRepository.updateAttempt(input.userId, input.localDate, input.attemptId, {
-      processingStatus: 'processing'
-    });
+  public async execute(job: ClaimedAnalysisJob): Promise<void> {
+    if (job.leaseExhausted) {
+      const now = new Date();
+      await this.securityAuditRepository.record({
+        occurredAt: now,
+        purgeAt: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000),
+        eventType: 'analysis.failed',
+        actorType: 'user',
+        actorId: job.userId,
+        action: 'process_analysis',
+        outcome: 'failure',
+        resourceType: 'attempt',
+        resourceId: job.attemptId,
+        metadata: { analysisStatus: 'failed', reasonCode: 'worker_lease_exhausted' }
+      });
+      return;
+    }
 
     try {
-      // 2. Dispatch isolated analysis in sandbox pool
-      const result = await this.sandboxService.analyze(input.attemptId, input.targetUrl);
+      const result = await this.sandboxService.analyze(job.attemptId, job.targetUrl);
+
+      if (result.outcome === 'inconclusive') {
+        const completedAt = new Date();
+        const persisted = await this.dailyAnalysisRepository.failClaimedAnalysisJob(
+          job,
+          completedAt,
+          'inconclusive',
+          result.reasonCode
+        );
+        if (!persisted) return;
+
+        await this.securityAuditRepository.record({
+          occurredAt: completedAt,
+          purgeAt: new Date(completedAt.getTime() + 90 * 24 * 60 * 60 * 1000),
+          eventType: 'analysis.inconclusive',
+          actorType: 'user',
+          actorId: job.userId,
+          action: 'process_analysis',
+          outcome: 'partial',
+          resourceType: 'attempt',
+          resourceId: job.attemptId,
+          metadata: { analysisStatus: 'inconclusive', reasonCode: result.reasonCode }
+        });
+        return;
+      }
 
       // 3. Format structured AnalysisPayload
       const analysis: AnalysisPayload = {
@@ -42,11 +73,8 @@ export class ProcessAnalysisJobUseCase {
       const now = new Date();
 
       // 4. Update attempt with terminal completed status and analytical result
-      await this.dailyAnalysisRepository.updateAttempt(input.userId, input.localDate, input.attemptId, {
-        processingStatus: 'completed',
-        completedAt: now,
-        analysis
-      });
+      const completed = await this.dailyAnalysisRepository.completeClaimedAnalysisJob(job, now, analysis);
+      if (!completed) return;
 
       // 5. Record audit event
       await this.securityAuditRepository.record({
@@ -54,11 +82,11 @@ export class ProcessAnalysisJobUseCase {
         purgeAt: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000),
         eventType: 'analysis.completed',
         actorType: 'user',
-        actorId: input.userId,
+        actorId: job.userId,
         action: 'process_analysis',
         outcome: 'success',
         resourceType: 'attempt',
-        resourceId: input.attemptId,
+        resourceId: job.attemptId,
         metadata: {
           analysisStatus: 'completed'
         }
@@ -66,25 +94,36 @@ export class ProcessAnalysisJobUseCase {
     } catch (err: unknown) {
       const now = new Date();
 
-      // Fallback to failed status upon critical error
-      await this.dailyAnalysisRepository.updateAttempt(input.userId, input.localDate, input.attemptId, {
-        processingStatus: 'failed',
-        completedAt: now
-      });
+      const reasonCode = err instanceof SandboxServiceError ? err.reasonCode : 'sandbox_processing_failed';
+      if (err instanceof SandboxServiceError && err.retryable && job.attemptNumber < this.maxAttempts) {
+        const backoffMs = Math.min(60_000, 1_000 * (2 ** Math.max(0, job.attemptNumber - 1)));
+        const retry = await this.dailyAnalysisRepository.retryClaimedAnalysisJob(
+          job,
+          now,
+          new Date(now.getTime() + backoffMs),
+          reasonCode,
+          this.maxAttempts
+        );
+        if (retry === 'rescheduled' || retry === 'stale') return;
+      }
+
+      // Terminal failures are committed only by the worker holding the current fencing token.
+      const failed = await this.dailyAnalysisRepository.failClaimedAnalysisJob(job, now, 'failed', reasonCode);
+      if (!failed) return;
 
       await this.securityAuditRepository.record({
         occurredAt: now,
         purgeAt: new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000),
         eventType: 'analysis.failed',
         actorType: 'user',
-        actorId: input.userId,
+        actorId: job.userId,
         action: 'process_analysis',
         outcome: 'failure',
         resourceType: 'attempt',
-        resourceId: input.attemptId,
+        resourceId: job.attemptId,
         metadata: {
           analysisStatus: 'failed',
-          reasonCode: err instanceof Error ? err.message.slice(0, 64) : 'sandbox_error'
+          reasonCode
         }
       });
     }

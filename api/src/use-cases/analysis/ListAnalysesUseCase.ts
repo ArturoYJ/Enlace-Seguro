@@ -13,12 +13,18 @@ export class ListAnalysesUseCase {
 
   public async execute(input: ListAnalysesInput): Promise<PaginatedAttemptsResult> {
     const limit = Math.min(Math.max(input.limit ?? 10, 1), 50);
-
-    return this.dailyAnalysisRepository.listUserAttempts(input.userId, {
+    const page = await this.dailyAnalysisRepository.listUserAttempts(input.userId, {
       limit,
       cursor: input.cursor,
       startDate: input.startDate,
       endDate: input.endDate
     });
+    return {
+      ...page,
+      items: page.items.map(({ analysis, ...attempt }) => ({
+        ...attempt,
+        ...(analysis ? { analysis: Object.fromEntries(Object.entries(analysis).filter(([key]) => key !== 'screenshotRef')) as typeof analysis } : {})
+      }))
+    };
   }
 }

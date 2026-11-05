@@ -64,6 +64,10 @@ load("database/schema/collection-validators.js");
     { name: "ix_daily_analyses_local_date" }
   );
   db.daily_analyses.createIndex(
+    { "attempts.job.state": 1, "attempts.job.availableAt": 1, "attempts.job.leaseExpiresAt": 1, localDate: 1 },
+    { name: "ix_daily_analyses_job_claim" }
+  );
+  db.daily_analyses.createIndex(
     { purgeAt: 1 },
     { name: "ttl_daily_analyses_purge_at", expireAfterSeconds: 0 }
   );

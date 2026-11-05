@@ -1,0 +1,447 @@
+{
+  "suite": "mongodb-explain-tests",
+  "database": "enlaceseguro_test_20261103114919_73606",
+  "version": "8.0.34",
+  "synthetic": {
+    "runPrefix": "6aea1ea4",
+    "dailyDocuments": 4380,
+    "attempts": 13140,
+    "auditEvents": 1460,
+    "users": 12,
+    "days": 365,
+    "note": "Synthetic fixture; no production data, indexes unchanged. Results are evidence, not an index/performance approval."
+  },
+  "explains": [
+    {
+      "pattern": "P4-history-first-page",
+      "winningPlan": {
+        "isCached": true,
+        "stage": "PROJECTION_SIMPLE",
+        "transformBy": {
+          "_id": 1,
+          "attempts": 1,
+          "localDate": 1
+        },
+        "inputStage": {
+          "stage": "FETCH",
+          "filter": {
+            "purgeAt": {
+              "$gt": "2026-11-03T17:49:24.803Z"
+            }
+          },
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "userId": 1,
+              "localDate": 1
+            },
+            "indexName": "uq_daily_analyses_user_date",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "userId": [],
+              "localDate": []
+            },
+            "isUnique": true,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "userId": [
+                "[ObjectId('6aea1ea40000000000000001'), ObjectId('6aea1ea40000000000000001')]"
+              ],
+              "localDate": [
+                "[MinKey, MaxKey]"
+              ]
+            }
+          }
+        }
+      },
+      "winningExecutionStages": [
+        {
+          "stage": "PROJECTION_SIMPLE"
+        },
+        {
+          "stage": "FETCH"
+        },
+        {
+          "stage": "IXSCAN",
+          "indexName": "uq_daily_analyses_user_date"
+        }
+      ],
+      "pipelineStages": [
+        {
+          "stage": "$unwind"
+        },
+        {
+          "stage": "$project"
+        },
+        {
+          "stage": "$sort"
+        }
+      ],
+      "keysExamined": 365,
+      "docsExamined": 365,
+      "cursorRowsReturned": 365,
+      "executionTimeMillis": 4,
+      "sortOrSpillStages": [
+        {
+          "stage": "$sort"
+        }
+      ]
+    },
+    {
+      "pattern": "P4-history-next-page",
+      "winningPlan": {
+        "isCached": true,
+        "stage": "PROJECTION_SIMPLE",
+        "transformBy": {
+          "_id": 1,
+          "attempts": 1,
+          "localDate": 1
+        },
+        "inputStage": {
+          "stage": "FETCH",
+          "filter": {
+            "purgeAt": {
+              "$gt": "2026-11-03T17:49:24.803Z"
+            }
+          },
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "userId": 1,
+              "localDate": 1
+            },
+            "indexName": "uq_daily_analyses_user_date",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "userId": [],
+              "localDate": []
+            },
+            "isUnique": true,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "userId": [
+                "[ObjectId('6aea1ea40000000000000001'), ObjectId('6aea1ea40000000000000001')]"
+              ],
+              "localDate": [
+                "[MinKey, MaxKey]"
+              ]
+            }
+          }
+        }
+      },
+      "winningExecutionStages": [
+        {
+          "stage": "PROJECTION_SIMPLE"
+        },
+        {
+          "stage": "FETCH"
+        },
+        {
+          "stage": "IXSCAN",
+          "indexName": "uq_daily_analyses_user_date"
+        }
+      ],
+      "pipelineStages": [
+        {
+          "stage": "$unwind"
+        },
+        {
+          "stage": "$project"
+        },
+        {
+          "stage": "$match"
+        },
+        {
+          "stage": "$sort"
+        }
+      ],
+      "keysExamined": 365,
+      "docsExamined": 365,
+      "cursorRowsReturned": 365,
+      "executionTimeMillis": 4,
+      "sortOrSpillStages": [
+        {
+          "stage": "$sort"
+        }
+      ]
+    },
+    {
+      "pattern": "P5a-own-detail",
+      "winningPlan": {
+        "isCached": false,
+        "stage": "LIMIT",
+        "limitAmount": 1,
+        "inputStage": {
+          "stage": "FETCH",
+          "filter": {
+            "$and": [
+              {
+                "localDate": {
+                  "$eq": "2026-08-30"
+                }
+              },
+              {
+                "userId": {
+                  "$eq": "6aea1ea40000000000000001"
+                }
+              }
+            ]
+          },
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "attempts.attemptId": 1
+            },
+            "indexName": "uq_daily_analyses_attempt_id",
+            "isMultiKey": true,
+            "multiKeyPaths": {
+              "attempts.attemptId": [
+                "attempts"
+              ]
+            },
+            "isUnique": true,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "attempts.attemptId": [
+                "[\"6aea1ea4-0000-4000-8000-000000000385\", \"6aea1ea4-0000-4000-8000-000000000385\"]"
+              ]
+            }
+          }
+        }
+      },
+      "winningExecutionStages": [
+        {
+          "stage": "LIMIT"
+        },
+        {
+          "stage": "FETCH"
+        },
+        {
+          "stage": "IXSCAN",
+          "indexName": "uq_daily_analyses_attempt_id"
+        }
+      ],
+      "pipelineStages": [],
+      "keysExamined": 1,
+      "docsExamined": 1,
+      "cursorRowsReturned": 1,
+      "executionTimeMillis": 0,
+      "sortOrSpillStages": []
+    },
+    {
+      "pattern": "P5b-global-detail",
+      "winningPlan": {
+        "isCached": false,
+        "stage": "EXPRESS_IXSCAN",
+        "keyPattern": "{ attempts.attemptId: 1 }",
+        "indexName": "uq_daily_analyses_attempt_id"
+      },
+      "winningExecutionStages": [
+        {
+          "stage": "EXPRESS_IXSCAN",
+          "indexName": "uq_daily_analyses_attempt_id"
+        }
+      ],
+      "pipelineStages": [],
+      "keysExamined": 1,
+      "docsExamined": 1,
+      "cursorRowsReturned": 1,
+      "executionTimeMillis": 0,
+      "sortOrSpillStages": []
+    },
+    {
+      "pattern": "A1-audit-range",
+      "winningPlan": {
+        "isCached": false,
+        "stage": "LIMIT",
+        "limitAmount": 51,
+        "inputStage": {
+          "stage": "FETCH",
+          "filter": {
+            "purgeAt": {
+              "$gt": "2026-11-03T17:49:24.803Z"
+            }
+          },
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "occurredAt": -1,
+              "_id": -1
+            },
+            "indexName": "ix_audit_occurred_at_id_desc",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "occurredAt": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "occurredAt": [
+                "[new Date(1793663999999), new Date(1777680000000)]"
+              ],
+              "_id": [
+                "[MaxKey, MinKey]"
+              ]
+            }
+          }
+        }
+      },
+      "winningExecutionStages": [
+        {
+          "stage": "LIMIT"
+        },
+        {
+          "stage": "FETCH"
+        },
+        {
+          "stage": "IXSCAN",
+          "indexName": "ix_audit_occurred_at_id_desc"
+        }
+      ],
+      "pipelineStages": [],
+      "keysExamined": 51,
+      "docsExamined": 51,
+      "cursorRowsReturned": 51,
+      "executionTimeMillis": 0,
+      "sortOrSpillStages": []
+    },
+    {
+      "pattern": "A2-audit-range-and-type",
+      "winningPlan": {
+        "isCached": false,
+        "stage": "LIMIT",
+        "limitAmount": 51,
+        "inputStage": {
+          "stage": "FETCH",
+          "filter": {
+            "purgeAt": {
+              "$gt": "2026-11-03T17:49:24.803Z"
+            }
+          },
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "eventType": 1,
+              "occurredAt": -1,
+              "_id": -1
+            },
+            "indexName": "ix_audit_type_occurred_at_id_desc",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "eventType": [],
+              "occurredAt": [],
+              "_id": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "eventType": [
+                "[\"analysis.completed\", \"analysis.completed\"]"
+              ],
+              "occurredAt": [
+                "[new Date(1793663999999), new Date(1777680000000)]"
+              ],
+              "_id": [
+                "[MaxKey, MinKey]"
+              ]
+            }
+          }
+        }
+      },
+      "winningExecutionStages": [
+        {
+          "stage": "LIMIT"
+        },
+        {
+          "stage": "FETCH"
+        },
+        {
+          "stage": "IXSCAN",
+          "indexName": "ix_audit_type_occurred_at_id_desc"
+        }
+      ],
+      "pipelineStages": [],
+      "keysExamined": 51,
+      "docsExamined": 51,
+      "cursorRowsReturned": 51,
+      "executionTimeMillis": 0,
+      "sortOrSpillStages": []
+    },
+    {
+      "pattern": "A3-daily-analysis-metrics",
+      "winningPlan": {
+        "isCached": false,
+        "stage": "PROJECTION_SIMPLE",
+        "transformBy": {
+          "attempts": 1,
+          "_id": 0
+        },
+        "inputStage": {
+          "stage": "FETCH",
+          "inputStage": {
+            "stage": "IXSCAN",
+            "keyPattern": {
+              "localDate": 1
+            },
+            "indexName": "ix_daily_analyses_local_date",
+            "isMultiKey": false,
+            "multiKeyPaths": {
+              "localDate": []
+            },
+            "isUnique": false,
+            "isSparse": false,
+            "isPartial": false,
+            "indexVersion": 2,
+            "direction": "forward",
+            "indexBounds": {
+              "localDate": [
+                "[\"2026-05-02\", \"2026-11-02\"]"
+              ]
+            }
+          }
+        }
+      },
+      "winningExecutionStages": [
+        {
+          "stage": "PROJECTION_SIMPLE"
+        },
+        {
+          "stage": "FETCH"
+        },
+        {
+          "stage": "IXSCAN",
+          "indexName": "ix_daily_analyses_local_date"
+        }
+      ],
+      "pipelineStages": [
+        {
+          "stage": "$unwind"
+        },
+        {
+          "stage": "$group"
+        }
+      ],
+      "keysExamined": 2222,
+      "docsExamined": 2222,
+      "cursorRowsReturned": 2222,
+      "executionTimeMillis": 10,
+      "sortOrSpillStages": []
+    }
+  ]
+}

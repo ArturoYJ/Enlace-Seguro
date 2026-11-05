@@ -9,7 +9,8 @@ import {
   MockRefreshTokenRepository,
   MockSecurityAuditRepository,
   MockDailyAnalysisRepository,
-  MockPasswordHasher
+  MockPasswordHasher,
+  MockLoginRateLimiter
 } from '../../mocks/MockRepositories.js';
 import { JwtTokenService } from '../../../src/infrastructure/security/JwtTokenService.js';
 import {
@@ -18,7 +19,8 @@ import {
   TokenExpiredOrInvalidError,
   TokenReuseDetectedError,
   QuotaExceededError,
-  ValidationError
+  ValidationError,
+  AnalysisQueueCapacityExceededError
 } from '../../../src/core/errors/DomainErrors.js';
 
 describe('Auth & Analysis Use Cases', () => {
@@ -28,6 +30,7 @@ describe('Auth & Analysis Use Cases', () => {
   let dailyRepo: MockDailyAnalysisRepository;
   let hasher: MockPasswordHasher;
   let tokenService: JwtTokenService;
+  let loginRateLimiter: MockLoginRateLimiter;
 
   beforeEach(() => {
     userRepo = new MockUserRepository();
@@ -36,6 +39,7 @@ describe('Auth & Analysis Use Cases', () => {
     dailyRepo = new MockDailyAnalysisRepository();
     hasher = new MockPasswordHasher();
     tokenService = new JwtTokenService('test_secret_32_characters_minimum_length_required!', 900);
+    loginRateLimiter = new MockLoginRateLimiter();
   });
 
   describe('RegisterUserUseCase', () => {
@@ -97,10 +101,11 @@ describe('Auth & Analysis Use Cases', () => {
         password: 'SecretPassword123!'
       });
 
-      const loginUseCase = new LoginUserUseCase(userRepo, tokenRepo, auditRepo, hasher, tokenService);
+      const loginUseCase = new LoginUserUseCase(userRepo, tokenRepo, auditRepo, hasher, tokenService, loginRateLimiter);
       const tokens = await loginUseCase.execute({
         email: 'login@example.com',
-        password: 'SecretPassword123!'
+        password: 'SecretPassword123!',
+        clientIp: '203.0.113.17'
       });
 
       assert.ok(tokens.accessToken);
@@ -108,6 +113,7 @@ describe('Auth & Analysis Use Cases', () => {
       assert.equal(tokens.tokenType, 'Bearer');
       assert.equal(tokens.expiresIn, 900);
       assert.equal(tokenRepo.tokens.length, 1);
+      assert.deepEqual(loginRateLimiter.clearedAccounts, ['login@example.com']);
     });
 
     it('should reject incorrect password with InvalidCredentialsError', async () => {
@@ -117,19 +123,21 @@ describe('Auth & Analysis Use Cases', () => {
         password: 'CorrectPassword123!'
       });
 
-      const loginUseCase = new LoginUserUseCase(userRepo, tokenRepo, auditRepo, hasher, tokenService);
+      const loginUseCase = new LoginUserUseCase(userRepo, tokenRepo, auditRepo, hasher, tokenService, loginRateLimiter);
 
       await assert.rejects(
         () =>
           loginUseCase.execute({
             email: 'login@example.com',
-            password: 'WrongPassword123!'
+            password: 'WrongPassword123!',
+            clientIp: '203.0.113.17'
           }),
         InvalidCredentialsError
       );
 
       const failedEvent = auditRepo.events.find((e) => e.eventType === 'auth.login.failed');
       assert.ok(failedEvent);
+      assert.deepEqual(loginRateLimiter.accountFailures, ['login@example.com']);
     });
   });
 
@@ -141,10 +149,11 @@ describe('Auth & Analysis Use Cases', () => {
         password: 'Password123!'
       });
 
-      const loginUseCase = new LoginUserUseCase(userRepo, tokenRepo, auditRepo, hasher, tokenService);
+      const loginUseCase = new LoginUserUseCase(userRepo, tokenRepo, auditRepo, hasher, tokenService, loginRateLimiter);
       const initialTokens = await loginUseCase.execute({
         email: 'refresh@example.com',
-        password: 'Password123!'
+        password: 'Password123!',
+        clientIp: '203.0.113.17'
       });
 
       const refreshUseCase = new RefreshTokenUseCase(userRepo, tokenRepo, auditRepo, tokenService);
@@ -173,10 +182,11 @@ describe('Auth & Analysis Use Cases', () => {
         password: 'Password123!'
       });
 
-      const loginUseCase = new LoginUserUseCase(userRepo, tokenRepo, auditRepo, hasher, tokenService);
+      const loginUseCase = new LoginUserUseCase(userRepo, tokenRepo, auditRepo, hasher, tokenService, loginRateLimiter);
       const tokens = await loginUseCase.execute({
         email: 'theft@example.com',
-        password: 'Password123!'
+        password: 'Password123!',
+        clientIp: '203.0.113.17'
       });
 
       const refreshUseCase = new RefreshTokenUseCase(userRepo, tokenRepo, auditRepo, tokenService);
@@ -224,11 +234,47 @@ describe('Auth & Analysis Use Cases', () => {
       );
 
       // Rejection must NOT be saved in daily analyses or audit
-      const daily = await dailyRepo.findDailyAnalysis(userId, '2026-10-26');
+      const todayLocalDate = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Mexico_City',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
+      const daily = await dailyRepo.findDailyAnalysis(userId, todayLocalDate);
       assert.equal(daily?.attemptsCount, 5);
 
       const quotaRejectionAudit = auditRepo.events.find((e) => e.metadata?.['reasonCode'] === 'quota_exceeded');
       assert.equal(quotaRejectionAudit, undefined);
+    });
+
+    it('persists the complete accepted input through the 64 KiB boundary and rejects larger input before quota admission', async () => {
+      const submitUseCase = new SubmitAnalysisUseCase(dailyRepo, auditRepo, 'America/Mexico_City', 5);
+      const userId = 'user-large-input';
+      const prefix = 'https://example.test/';
+      const input = prefix + 'x'.repeat(65_536 - Buffer.byteLength(prefix, 'utf8'));
+
+      const admission = await submitUseCase.execute({ userId, input });
+      const stored = await dailyRepo.findAttemptByLocalKey(userId, admission.localDate, admission.attemptId);
+      assert.equal(stored?.attempt.inputSizeBytes, 65_536);
+      assert.equal(stored?.attempt.submittedInput, input);
+
+      await assert.rejects(
+        () => submitUseCase.execute({ userId, input: `${input}x` }),
+        ValidationError
+      );
+      const daily = await dailyRepo.findDailyAnalysis(userId, admission.localDate);
+      assert.equal(daily?.attemptsCount, 1, 'oversized input must be rejected before consuming quota');
+    });
+
+    it('maps a full global queue to a retryable service error without auditing or consuming daily quota', async () => {
+      dailyRepo.admitAttemptAtomic = async () => ({ success: false, reason: 'capacity_exceeded' });
+      const submitUseCase = new SubmitAnalysisUseCase(dailyRepo, auditRepo, 'America/Mexico_City', 5);
+      await assert.rejects(
+        () => submitUseCase.execute({ userId: 'user-capacity', input: 'https://queue-full.example.test/' }),
+        AnalysisQueueCapacityExceededError
+      );
+      assert.equal(dailyRepo.records.length, 0);
+      assert.equal(auditRepo.events.length, 0);
     });
   });
 });

@@ -22,6 +22,10 @@ export class VerdictEvaluator {
     const reasons: string[] = [];
     const signals = [...input.signals];
 
+    if (signals.includes('untrusted_tls_certificate') || signals.includes('tls_certificate_validation_failed')) {
+      throw new Error('TLS certificate validation failures must terminate as inconclusive, not receive a security verdict.');
+    }
+
     // 1. SSRF or Private IP attempts are automatically critical
     if (input.blockedSsrf) {
       signals.push('ssrf_attempt_blocked');
@@ -48,10 +52,6 @@ export class VerdictEvaluator {
       reasons.push('La página intentó desencadenar la descarga automática de archivos sin consentimiento.');
     }
 
-    if (signals.includes('untrusted_tls_certificate')) {
-      reasons.push('El certificado TLS del servidor no es confiable, está caducado o es inválido.');
-    }
-
     if (reasons.length > 0) {
       return {
         verdict: 'peligroso',
@@ -63,7 +63,7 @@ export class VerdictEvaluator {
     // 3. Medium severity signals -> sospechoso
     if (input.redirects.length >= 3) {
       signals.push('excessive_redirect_chain');
-      reasons.push(`El enlace ejecuta múltiples redirecciones encadenadas (${input.redirects.length} saltos).`);
+      reasons.push('El análisis detectó múltiples redirecciones HTTP durante la carga.');
     }
 
     // Check if redirect switched domains

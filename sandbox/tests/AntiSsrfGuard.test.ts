@@ -115,9 +115,51 @@ describe('AntiSsrfGuard', () => {
       assert.equal(AntiSsrfGuard.isPrivateOrReservedIp('::ffff:8.8.8.8'), false);
     });
 
+    it('should classify hexadecimal IPv4-mapped IPv6 addresses by their embedded IPv4', () => {
+      // Equivalent to ::ffff:127.0.0.1, ::ffff:192.168.1.1, and ::ffff:169.254.169.254.
+      assert.equal(AntiSsrfGuard.isPrivateOrReservedIp('::ffff:7f00:1'), true);
+      assert.equal(AntiSsrfGuard.isPrivateOrReservedIp('::ffff:c0a8:101'), true);
+      assert.equal(AntiSsrfGuard.isPrivateOrReservedIp('::ffff:a9fe:a9fe'), true);
+      // Equivalent to ::ffff:8.8.8.8.
+      assert.equal(AntiSsrfGuard.isPrivateOrReservedIp('::ffff:808:808'), false);
+    });
+
     it('should allow legitimate public IPv6 addresses', () => {
       assert.equal(AntiSsrfGuard.isPrivateOrReservedIp('2606:4700:4700::1111'), false);
       assert.equal(AntiSsrfGuard.isPrivateOrReservedIp('2001:4860:4860::8888'), false);
+    });
+  });
+
+  describe('DNS destination validation', () => {
+    const target = new URL('https://fixture.example/');
+
+    it('should reject a mixed public A and private mapped AAAA answer', async () => {
+      const result = await AntiSsrfGuard.validateDestination(target, async () => [
+        { address: '8.8.8.8', family: 4 },
+        { address: '::ffff:7f00:1', family: 6 }
+      ]);
+
+      assert.equal(result.safe, false);
+      assert.equal(result.resolvedIp, '::ffff:7f00:1');
+    });
+
+    it('should accept a fixture answer only when every A/AAAA address is public', async () => {
+      const result = await AntiSsrfGuard.validateDestination(target, async () => [
+        { address: '8.8.8.8', family: 4 },
+        { address: '2606:4700:4700::1111', family: 6 }
+      ]);
+
+      assert.equal(result.safe, true);
+      assert.equal(result.resolvedIp, '8.8.8.8');
+    });
+
+    it('should fail closed when DNS resolution throws', async () => {
+      const result = await AntiSsrfGuard.validateDestination(target, async () => {
+        throw new Error('fixture DNS failure');
+      });
+
+      assert.equal(result.safe, false);
+      assert.match(result.reason ?? '', /DNS resolution error/);
     });
   });
 });
