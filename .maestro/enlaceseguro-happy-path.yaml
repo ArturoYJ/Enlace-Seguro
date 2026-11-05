@@ -1,0 +1,111 @@
+appId: ${APP_ID}
+name: EnlaceSeguro — análisis sintético desde la app instalada
+tags:
+  - e2e
+  - smoke
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+- assertVisible: Omitir
+- tapOn: Omitir
+
+- assertVisible: Inicia sesión
+- tapOn: Crear cuenta
+- assertVisible: Crea tu cuenta
+- tapOn: Correo electrónico
+- inputText: ${TEST_EMAIL}
+- tapOn: Contraseña
+- inputText: ${TEST_PASSWORD}
+- hideKeyboard
+- tapOn: Crear cuenta
+
+- assertVisible: Tu cuenta quedó creada. Inicia sesión para continuar.
+- tapOn: Correo electrónico
+- inputText: ${TEST_EMAIL}
+- tapOn: Contraseña
+- inputText: ${TEST_PASSWORD}
+- hideKeyboard
+- tapOn: Iniciar sesión
+
+- assertVisible: ANALIZA UN ENLACE
+- tapOn: Enlace o mensaje para analizar
+- inputText: Aviso sintético; revisa https://example.test/synthetic-path?only=url. No compartas este mensaje.
+- hideKeyboard
+- scrollUntilVisible:
+    element: Analizar enlace
+    direction: DOWN
+- tapOn: Analizar enlace
+- extendedWaitUntil:
+    visible: Sospechoso
+    timeout: 45000
+- scrollUntilVisible:
+    element: ".*Señal sintética del entorno E2E; no corresponde a una consulta de reputación\\..*"
+    direction: DOWN
+- assertVisible: ".*Señal sintética del entorno E2E; no corresponde a una consulta de reputación\\..*"
+
+- tapOn: Historial
+- assertVisible: Historial
+- assertVisible: example.test
+- tapOn:
+    text: ".*Análisis de example\\.test, Sospechoso.*"
+- assertVisible: Sospechoso
+- scrollUntilVisible:
+    element: Por qué obtuviste este resultado
+    direction: DOWN
+- assertVisible: Por qué obtuviste este resultado
+- assertVisible: ".*Señal sintética del entorno E2E; no corresponde a una consulta de reputación\\..*"
+- tapOn: Volver al historial
+
+- assertVisible: Historial
+- tapOn: Inicio
+- assertVisible: ANALIZA UN ENLACE
+- tapOn: Enlace o mensaje para analizar
+- inputText: https://example.test/synthetic-inconclusive
+- hideKeyboard
+- scrollUntilVisible:
+    element: Analizar enlace
+    direction: DOWN
+- tapOn: Analizar enlace
+- extendedWaitUntil:
+    visible: Resultado no concluyente
+    timeout: 45000
+- assertVisible: "No hubo evidencia suficiente para emitir un veredicto.*"
+- assertNotVisible: Sospechoso
+- assertNotVisible: Peligroso
+- assertNotVisible: Sin amenazas detectadas
+
+- tapOn: Inicio
+- assertVisible: ANALIZA UN ENLACE
+- tapOn: Enlace o mensaje para analizar
+- inputText: https://example.test/synthetic-failed
+- hideKeyboard
+- scrollUntilVisible:
+    element: Analizar enlace
+    direction: DOWN
+- tapOn: Analizar enlace
+- extendedWaitUntil:
+    visible: No se pudo analizar
+    timeout: 45000
+- assertVisible: El análisis no terminó correctamente. No se presentó un veredicto.
+- scrollUntilVisible:
+    element: Intentar de nuevo
+    direction: DOWN
+- assertVisible: El reintento crea una nueva solicitud y puede consumir cuota.
+- assertNotVisible: Sospechoso
+- assertNotVisible: Peligroso
+- assertNotVisible: Sin amenazas detectadas
+- tapOn: Volver al inicio
+
+- assertVisible: ANALIZA UN ENLACE
+- tapOn: Mi cuenta
+- assertVisible: Mi cuenta
+- tapOn: Cerrar sesión
+- assertVisible: ¿Cerrar sesión?
+- tapOn: Confirmar cierre de sesión
+- assertVisible: Inicia sesión
+- stopApp
+- launchApp:
+    clearState: false
+    clearKeychain: false
+- assertVisible: Inicia sesión

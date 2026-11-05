@@ -1,0 +1,58 @@
+appId: ${APP_ID}
+name: EnlaceSeguro — errores de autenticación y recuperación
+tags:
+  - e2e
+  - auth
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+- assertVisible: Omitir
+- tapOn: Omitir
+
+- assertVisible: Inicia sesión
+- tapOn: Crear cuenta
+- assertVisible: Crea tu cuenta
+- tapOn: Correo electrónico
+- inputText: no-es-correo
+- tapOn: Contraseña
+- inputText: ${TEST_PASSWORD}
+- hideKeyboard
+- tapOn: Crear cuenta
+- assertVisible: Revisa el correo y la contraseña e inténtalo de nuevo.
+
+- tapOn: Correo electrónico
+- eraseText: 100
+- inputText: ${AUTH_TEST_EMAIL}
+- tapOn: Crear cuenta
+- assertVisible: Tu cuenta quedó creada. Inicia sesión para continuar.
+
+- tapOn: Correo electrónico
+- inputText: ${AUTH_TEST_EMAIL}
+- tapOn: Contraseña
+- inputText: Wrong-Synthetic-Password-8347!
+- hideKeyboard
+- tapOn: Iniciar sesión
+- assertVisible: El correo o la contraseña no coinciden.
+
+- tapOn: Crear cuenta
+- assertVisible: Crea tu cuenta
+- tapOn: Correo electrónico
+- inputText: ${AUTH_TEST_EMAIL}
+- tapOn: Contraseña
+- inputText: ${TEST_PASSWORD}
+- hideKeyboard
+- tapOn: Crear cuenta
+- assertVisible: Ya existe una cuenta con este correo.
+
+- tapOn: Volver
+- assertVisible: Inicia sesión
+- tapOn: Correo electrónico
+- eraseText: 100
+- inputText: ${AUTH_TEST_EMAIL}
+- tapOn: Contraseña
+- eraseText: 100
+- inputText: ${TEST_PASSWORD}
+- hideKeyboard
+- tapOn: Iniciar sesión
+- assertVisible: ANALIZA UN ENLACE

@@ -1,0 +1,123 @@
+appId: ${APP_ID}
+name: EnlaceSeguro — límite diario de cinco análisis
+tags:
+  - e2e
+  - quota
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+- assertVisible: Omitir
+- tapOn: Omitir
+
+- assertVisible: Inicia sesión
+- tapOn: Crear cuenta
+- assertVisible: Crea tu cuenta
+- tapOn: Correo electrónico
+- inputText: ${QUOTA_TEST_EMAIL}
+- tapOn: Contraseña
+- inputText: ${TEST_PASSWORD}
+- hideKeyboard
+- tapOn: Crear cuenta
+
+- assertVisible: Tu cuenta quedó creada. Inicia sesión para continuar.
+- tapOn: Correo electrónico
+- inputText: ${QUOTA_TEST_EMAIL}
+- tapOn: Contraseña
+- inputText: ${TEST_PASSWORD}
+- hideKeyboard
+- tapOn: Iniciar sesión
+- assertVisible: ANALIZA UN ENLACE
+
+# Analyses 1–5 are admitted and completed using the disposable synthetic Sandbox.
+- tapOn: Enlace o mensaje para analizar
+- inputText: https://example.test/quota-attempt-1
+- hideKeyboard
+- scrollUntilVisible:
+    element: Analizar enlace
+    direction: DOWN
+- tapOn: Analizar enlace
+- extendedWaitUntil:
+    visible: Sospechoso
+    timeout: 45000
+- scrollUntilVisible:
+    element: Analizar otro enlace
+    direction: DOWN
+- tapOn: Analizar otro enlace
+
+- assertVisible: ANALIZA UN ENLACE
+- tapOn: Enlace o mensaje para analizar
+- inputText: https://example.test/quota-attempt-2
+- hideKeyboard
+- scrollUntilVisible:
+    element: Analizar enlace
+    direction: DOWN
+- tapOn: Analizar enlace
+- extendedWaitUntil:
+    visible: Sospechoso
+    timeout: 45000
+- scrollUntilVisible:
+    element: Analizar otro enlace
+    direction: DOWN
+- tapOn: Analizar otro enlace
+
+- assertVisible: ANALIZA UN ENLACE
+- tapOn: Enlace o mensaje para analizar
+- inputText: https://example.test/quota-attempt-3
+- hideKeyboard
+- scrollUntilVisible:
+    element: Analizar enlace
+    direction: DOWN
+- tapOn: Analizar enlace
+- extendedWaitUntil:
+    visible: Sospechoso
+    timeout: 45000
+- scrollUntilVisible:
+    element: Analizar otro enlace
+    direction: DOWN
+- tapOn: Analizar otro enlace
+
+- assertVisible: ANALIZA UN ENLACE
+- tapOn: Enlace o mensaje para analizar
+- inputText: https://example.test/quota-attempt-4
+- hideKeyboard
+- scrollUntilVisible:
+    element: Analizar enlace
+    direction: DOWN
+- tapOn: Analizar enlace
+- extendedWaitUntil:
+    visible: Sospechoso
+    timeout: 45000
+- scrollUntilVisible:
+    element: Analizar otro enlace
+    direction: DOWN
+- tapOn: Analizar otro enlace
+
+- assertVisible: ANALIZA UN ENLACE
+- tapOn: Enlace o mensaje para analizar
+- inputText: https://example.test/quota-attempt-5
+- hideKeyboard
+- scrollUntilVisible:
+    element: Analizar enlace
+    direction: DOWN
+- tapOn: Analizar enlace
+- extendedWaitUntil:
+    visible: Sospechoso
+    timeout: 45000
+- scrollUntilVisible:
+    element: Analizar otro enlace
+    direction: DOWN
+- tapOn: Analizar otro enlace
+
+# The sixth POST must be rejected by the API; no sixth result is displayed or persisted.
+- assertVisible: ANALIZA UN ENLACE
+- tapOn: Enlace o mensaje para analizar
+- inputText: https://example.test/quota-attempt-6
+- hideKeyboard
+- scrollUntilVisible:
+    element: Analizar enlace
+    direction: DOWN
+- tapOn: Analizar enlace
+- assertVisible: Límite de análisis alcanzado
+- assertVisible: ".*Alcanzaste (el límite diario de 5 análisis|la cuota diaria de análisis de tu cuenta).*"
+- tapOn: Entendido

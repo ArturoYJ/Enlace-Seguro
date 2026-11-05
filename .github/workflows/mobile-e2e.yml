@@ -1,0 +1,242 @@
+name: Installed mobile E2E
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android API 36 installed E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      APP_VARIANT: e2e
+      APP_ID: com.enlaceseguro.e2e
+      EXPO_PUBLIC_API_URL: http://10.0.2.2:3000/api/v1
+      TEST_EMAIL: test-${{ github.run_id }}-${{ github.run_attempt }}-android@example.test
+      AUTH_TEST_EMAIL: auth-${{ github.run_id }}-${{ github.run_attempt }}-android@example.test
+      QUOTA_TEST_EMAIL: quota-${{ github.run_id }}-${{ github.run_attempt }}-android@example.test
+      TEST_PASSWORD: Synthetic-E2E-Only-Password-8347!
+      E2E_EXPECTED_ANALYSIS_INPUT: https://example.test/synthetic-path?only=url
+      E2E_EXPECTED_INCONCLUSIVE_INPUT: https://example.test/synthetic-inconclusive
+      E2E_EXPECTED_FAILED_INPUT: https://example.test/synthetic-failed
+      MONGO_IMAGE: mongo:8.0.34
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            sandbox/package-lock.json
+            frontend/mobile/package-lock.json
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install API, Sandbox, and mobile dependencies
+        run: |
+          npm ci --prefix api
+          npm ci --prefix sandbox
+          npm ci --prefix frontend/mobile
+
+      - name: Build and run Android API 36 emulator E2E
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -no-audio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            cleanup() {
+              if [[ -f "$RUNNER_TEMP/mobile-e2e-api.pid" ]]; then
+                kill "$(cat "$RUNNER_TEMP/mobile-e2e-api.pid")" 2>/dev/null || true
+                wait "$(cat "$RUNNER_TEMP/mobile-e2e-api.pid")" 2>/dev/null || true
+                rm -f "$RUNNER_TEMP/mobile-e2e-api.pid"
+              fi
+              bash database/tests/stop-mobile-e2e-mongo.sh || true
+            }
+            trap cleanup EXIT
+            trap 'exit 143' TERM
+
+            MOBILE_E2E_ENV_FILE="$RUNNER_TEMP/mobile-e2e-mongo.env" bash database/tests/start-mobile-e2e-mongo.sh
+            source "$RUNNER_TEMP/mobile-e2e-mongo.env"
+            (cd api && exec env E2E_API_HOST=0.0.0.0 E2E_API_PORT=3000 node --import tsx tests/e2e/server.ts) >"$RUNNER_TEMP/mobile-e2e-api.log" 2>&1 &
+            echo $! >"$RUNNER_TEMP/mobile-e2e-api.pid"
+            for _ in $(seq 1 60); do
+              if curl --silent --fail http://127.0.0.1:3000/api/v1/health >/dev/null; then break; fi
+              sleep 1
+            done
+            curl --silent --fail http://127.0.0.1:3000/api/v1/health >/dev/null || { cat "$RUNNER_TEMP/mobile-e2e-api.log"; exit 1; }
+
+            cd frontend/mobile
+            npx expo prebuild --clean --platform android
+            npx expo run:android --variant release --no-bundler
+            cd ../..
+
+            mkdir -p "$HOME/.maestro"
+            curl -fsSL https://github.com/mobile-dev-inc/maestro/releases/download/cli-2.11.0/maestro.zip -o "$RUNNER_TEMP/maestro.zip"
+            echo '5384593cb4e7a106489e75a821d157dd43f4e438df6bc308b72e82c685e1283a  '"$RUNNER_TEMP/maestro.zip" | sha256sum --check
+            unzip -q "$RUNNER_TEMP/maestro.zip" -d "$HOME/.maestro"
+            chmod +x "$HOME/.maestro/bin/maestro"
+            export PATH="$HOME/.maestro/bin:$PATH"
+            maestro --version
+            maestro --device emulator-5554 test \
+              -e APP_ID="$APP_ID" \
+              -e AUTH_TEST_EMAIL="$AUTH_TEST_EMAIL" \
+              -e TEST_PASSWORD="$TEST_PASSWORD" \
+              .maestro/enlaceseguro-auth-errors.yaml
+            (cd api && node --import tsx tests/e2e/assert-mobile-auth-errors.ts)
+            maestro --device emulator-5554 test \
+              -e APP_ID="$APP_ID" \
+              -e TEST_EMAIL="$TEST_EMAIL" \
+              -e TEST_PASSWORD="$TEST_PASSWORD" \
+              .maestro/enlaceseguro-happy-path.yaml
+            (cd api && node --import tsx tests/e2e/assert-mobile-session-revocation.ts)
+            (cd api && node --import tsx tests/e2e/assert-mobile-analysis-input.ts)
+            maestro --device emulator-5554 test \
+              -e APP_ID="$APP_ID" \
+              -e QUOTA_TEST_EMAIL="$QUOTA_TEST_EMAIL" \
+              -e TEST_PASSWORD="$TEST_PASSWORD" \
+              .maestro/enlaceseguro-quota-boundary.yaml
+            (cd api && node --import tsx tests/e2e/assert-mobile-quota-boundary.ts)
+
+      - name: Ensure Android fixture cleanup
+        if: always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/mobile-e2e-api.pid" ]]; then kill "$(cat "$RUNNER_TEMP/mobile-e2e-api.pid")" 2>/dev/null || true; rm -f "$RUNNER_TEMP/mobile-e2e-api.pid"; fi
+          bash database/tests/stop-mobile-e2e-mongo.sh || true
+
+  ios:
+    name: iOS Xcode 26.6 simulator installed E2E
+    runs-on: macos-26-intel
+    timeout-minutes: 60
+    env:
+      APP_VARIANT: e2e
+      APP_ID: com.enlaceseguro.e2e
+      EXPO_PUBLIC_API_URL: http://127.0.0.1:3000/api/v1
+      TEST_EMAIL: test-${{ github.run_id }}-${{ github.run_attempt }}-ios@example.test
+      AUTH_TEST_EMAIL: auth-${{ github.run_id }}-${{ github.run_attempt }}-ios@example.test
+      QUOTA_TEST_EMAIL: quota-${{ github.run_id }}-${{ github.run_attempt }}-ios@example.test
+      TEST_PASSWORD: Synthetic-E2E-Only-Password-8347!
+      E2E_EXPECTED_ANALYSIS_INPUT: https://example.test/synthetic-path?only=url
+      E2E_EXPECTED_INCONCLUSIVE_INPUT: https://example.test/synthetic-inconclusive
+      E2E_EXPECTED_FAILED_INPUT: https://example.test/synthetic-failed
+      MONGO_IMAGE: mongo:8.0.34
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker daemon for MongoDB fixture
+        uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5 # v5
+
+      - name: Verify Docker daemon
+        run: docker info
+
+      - name: Select and verify Xcode 26.6
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          xcodebuild -version | grep -q 'Xcode 26.6'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            sandbox/package-lock.json
+            frontend/mobile/package-lock.json
+
+      - name: Install API, Sandbox, and mobile dependencies
+        run: |
+          npm ci --prefix api
+          npm ci --prefix sandbox
+          npm ci --prefix frontend/mobile
+
+      - name: Build and run iOS simulator E2E
+        run: |
+          set -euo pipefail
+          cleanup() {
+            if [[ -f "$RUNNER_TEMP/mobile-e2e-api.pid" ]]; then
+              kill "$(cat "$RUNNER_TEMP/mobile-e2e-api.pid")" 2>/dev/null || true
+              wait "$(cat "$RUNNER_TEMP/mobile-e2e-api.pid")" 2>/dev/null || true
+              rm -f "$RUNNER_TEMP/mobile-e2e-api.pid"
+            fi
+            bash database/tests/stop-mobile-e2e-mongo.sh || true
+          }
+          trap cleanup EXIT
+          trap 'exit 143' TERM
+
+          IOS_UDID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for group in d.values() for x in group if x["isAvailable"] and x["name"].startswith("iPhone")))')"
+          xcrun simctl boot "$IOS_UDID" 2>/dev/null || true
+          xcrun simctl bootstatus "$IOS_UDID" -b
+
+          MOBILE_E2E_ENV_FILE="$RUNNER_TEMP/mobile-e2e-mongo.env" bash database/tests/start-mobile-e2e-mongo.sh
+          source "$RUNNER_TEMP/mobile-e2e-mongo.env"
+          # The iOS Simulator reaches the host via 127.0.0.1; keep this fixture loopback-only.
+          (cd api && exec env E2E_API_HOST=127.0.0.1 E2E_API_PORT=3000 node --import tsx tests/e2e/server.ts) >"$RUNNER_TEMP/mobile-e2e-api.log" 2>&1 &
+          echo $! >"$RUNNER_TEMP/mobile-e2e-api.pid"
+          for _ in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:3000/api/v1/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --silent --fail http://127.0.0.1:3000/api/v1/health >/dev/null || { cat "$RUNNER_TEMP/mobile-e2e-api.log"; exit 1; }
+
+          cd frontend/mobile
+          npx expo prebuild --clean --platform ios
+          npx expo run:ios --configuration Release --device "$IOS_UDID" --no-bundler
+          cd ../..
+
+          mkdir -p "$HOME/.maestro"
+          curl -fsSL https://github.com/mobile-dev-inc/maestro/releases/download/cli-2.11.0/maestro.zip -o "$RUNNER_TEMP/maestro.zip"
+          echo '5384593cb4e7a106489e75a821d157dd43f4e438df6bc308b72e82c685e1283a  '"$RUNNER_TEMP/maestro.zip" | shasum -a 256 --check
+          unzip -q "$RUNNER_TEMP/maestro.zip" -d "$HOME/.maestro"
+          chmod +x "$HOME/.maestro/bin/maestro"
+          export PATH="$HOME/.maestro/bin:$PATH"
+          maestro --version
+          maestro --device "$IOS_UDID" test \
+            -e APP_ID="$APP_ID" \
+            -e AUTH_TEST_EMAIL="$AUTH_TEST_EMAIL" \
+            -e TEST_PASSWORD="$TEST_PASSWORD" \
+            .maestro/enlaceseguro-auth-errors.yaml
+          (cd api && node --import tsx tests/e2e/assert-mobile-auth-errors.ts)
+          maestro --device "$IOS_UDID" test \
+            -e APP_ID="$APP_ID" \
+            -e TEST_EMAIL="$TEST_EMAIL" \
+            -e TEST_PASSWORD="$TEST_PASSWORD" \
+            .maestro/enlaceseguro-happy-path.yaml
+          (cd api && node --import tsx tests/e2e/assert-mobile-session-revocation.ts)
+          (cd api && node --import tsx tests/e2e/assert-mobile-analysis-input.ts)
+          maestro --device "$IOS_UDID" test \
+            -e APP_ID="$APP_ID" \
+            -e QUOTA_TEST_EMAIL="$QUOTA_TEST_EMAIL" \
+            -e TEST_PASSWORD="$TEST_PASSWORD" \
+            .maestro/enlaceseguro-quota-boundary.yaml
+          (cd api && node --import tsx tests/e2e/assert-mobile-quota-boundary.ts)
+
+      - name: Ensure iOS fixture cleanup
+        if: always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/mobile-e2e-api.pid" ]]; then kill "$(cat "$RUNNER_TEMP/mobile-e2e-api.pid")" 2>/dev/null || true; rm -f "$RUNNER_TEMP/mobile-e2e-api.pid"; fi
+          bash database/tests/stop-mobile-e2e-mongo.sh || true
