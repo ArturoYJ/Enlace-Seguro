@@ -5,6 +5,8 @@
 
 ## Demo local — avance vigente — 2026-11-05
 
+- Smoke local repetido: tras una espera insuficiente de 12 s en un escenario de Chromium real, el test usa un límite de observación de 35 s (pool de prueba: 20 s); sin cambiar timeouts productivos. La corrida completa posterior pasó; API typecheck y 77 pruebas unitarias también pasaron.
+
 - En una copia aislada de archivos versionados pasaron `npm ci`, Expo prebuild y Gradle `assembleRelease` ARM64 con URL sintética; APK debug v2, target 36. No prueba instalación en Android ni reproducibilidad bit a bit; no se alteró el APK de demo.
 
 - El usuario confirmó en iPhone que VoiceOver anuncia el campo de enlace y los botones Analizar, Historial y Cerrar sesión; otros estados, foco, texto y contraste siguen pendientes.

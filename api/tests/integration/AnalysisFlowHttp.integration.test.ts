@@ -37,6 +37,9 @@ import type { IPasswordHasher } from '../../src/core/ports/ISecurityServices.js'
 import type { IScreenshotStorage } from '../../../sandbox/src/infrastructure/ScreenshotStorage.js';
 import { startFixtures } from '../../../tests/local/fixture-server.mjs';
 
+// Real Chromium may consume its 20s sandbox deadline plus worker/HTTP overhead.
+const REAL_BROWSER_POLL_TIMEOUT_MS = 35_000;
+
 const mongoUri = process.env['MONGO_TEST_URI'];
 const suite = mongoUri ? describe : describe.skip;
 const jwtSecret = 'analysis-flow-http-integration-secret-32-bytes-plus';
@@ -447,7 +450,7 @@ suite('analysis HTTP flow integration', () => {
       const realTlsAdmission = realTlsAccepted.json() as { attemptId: string; localDate: string };
       const realTlsDetailPath = `/api/v1/analyses/${encodeURIComponent(realTlsAdmission.attemptId)}?localDate=${encodeURIComponent(realTlsAdmission.localDate)}`;
       let realTlsDetailResponse;
-      const realTlsDeadline = Date.now() + 12_000;
+      const realTlsDeadline = Date.now() + REAL_BROWSER_POLL_TIMEOUT_MS;
       do {
         realTlsDetailResponse = await app.inject({
           method: 'GET', url: realTlsDetailPath,
@@ -481,7 +484,7 @@ suite('analysis HTTP flow integration', () => {
       const realCaptureAdmission = realCaptureAccepted.json() as { attemptId: string; localDate: string };
       const realCaptureDetailPath = `/api/v1/analyses/${encodeURIComponent(realCaptureAdmission.attemptId)}?localDate=${encodeURIComponent(realCaptureAdmission.localDate)}`;
       let realCaptureDetailResponse;
-      const realCaptureDeadline = Date.now() + 12_000;
+      const realCaptureDeadline = Date.now() + REAL_BROWSER_POLL_TIMEOUT_MS;
       do {
         realCaptureDetailResponse = await app.inject({
           method: 'GET', url: realCaptureDetailPath,
@@ -516,7 +519,7 @@ suite('analysis HTTP flow integration', () => {
       const resourceBudgetAdmission = resourceBudgetAccepted.json() as { attemptId: string; localDate: string };
       const resourceBudgetDetailPath = `/api/v1/analyses/${encodeURIComponent(resourceBudgetAdmission.attemptId)}?localDate=${encodeURIComponent(resourceBudgetAdmission.localDate)}`;
       let resourceBudgetDetailResponse;
-      const resourceBudgetDeadline = Date.now() + 12_000;
+      const resourceBudgetDeadline = Date.now() + REAL_BROWSER_POLL_TIMEOUT_MS;
       do {
         resourceBudgetDetailResponse = await app.inject({
           method: 'GET', url: resourceBudgetDetailPath,
