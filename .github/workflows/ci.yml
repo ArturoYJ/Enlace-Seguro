@@ -31,6 +31,9 @@ jobs:
             frontend/mobile/package-lock.json
             frontend/admin-console/package-lock.json
 
+      - name: Test local fixtures and reset safeguards
+        run: node --test tests/local/*.test.mjs
+
       - name: Install API dependencies
         working-directory: api
         run: npm ci
