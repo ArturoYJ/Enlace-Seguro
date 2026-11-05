@@ -5,6 +5,8 @@
 
 ## Demo local — avance vigente — 2026-11-05
 
+- El usuario confirmó en iPhone que VoiceOver anuncia el campo de enlace y los botones Analizar, Historial y Cerrar sesión; otros estados, foco, texto y contraste siguen pendientes.
+
 - El cliente usa Expo SDK 58. El usuario confirmó en iPhone registro de cuenta exclusiva de demo, login, navegación, análisis, historial y logout; informó que la interfaz se ve igual que la simulación. Persisten QA independiente contra Figma, VoiceOver y expiración de sesión en dispositivo.
 - La suite Mongo desechable pasó con una prueba adicional de paginación de auditoría HTTP, incluidos eventos con la misma fecha/hora. La consola pasó también navegación siguiente/anterior en Chromium con respuestas sintéticas; no equivale a una prueba UI con múltiples páginas reales.
 - Las cuatro fixtures locales (limpia, señal sospechosa, TLS inválido y timeout) pasaron por API/worker/Mongo/Sandbox reales en integración desechable; el timeout agotó cuatro intentos y terminó fallido sin veredicto. La excepción loopback y el deadline reducido aplican solo en el proceso de prueba.
