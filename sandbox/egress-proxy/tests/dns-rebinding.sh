@@ -43,6 +43,8 @@ for file in "$CONFIG_FILE" "$CONFIG_RENDERER" "$DNS_FIXTURE"; do [[ -f "$file" ]
 
 TEMP_CONFIG_FILE="$(mktemp "${TMPDIR:-/tmp}/es-envoy-dns-${RUN_ID}.XXXXXX.yaml")"
 node "$CONFIG_RENDERER" "$CONFIG_FILE" "$TEMP_CONFIG_FILE" "$DNS_IP"
+# mktemp creates mode 0600; Envoy drops root and must read this synthetic config.
+chmod 0644 "$TEMP_CONFIG_FILE"
 docker run --rm -v "$TEMP_CONFIG_FILE:/etc/envoy/envoy.yaml:ro" "$ENVOY_IMAGE" --mode validate -c /etc/envoy/envoy.yaml
 
 docker network create --internal --subnet 198.18.0.0/24 --label "enlaceseguro.dns-rebind.run=${RUN_ID}" "$NETWORK_NAME" >/dev/null
