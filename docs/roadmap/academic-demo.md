@@ -36,6 +36,8 @@ PaaS/nube, publicación en tiendas, compartir enlaces desde otras apps, reputaci
 
 El APK está en `frontend/mobile/android/app/build/outputs/apk/release/app-release.apk`: 47 MiB, solo ARM64, package `com.anonymous.enlaceseguro`, target SDK 36, firma debug v2. El bundle contiene la URL LAN configurada durante el build y el manifest permite HTTP local para esta demo. No fue instalado ni probado en dispositivo; revisa que la IP LAN siga vigente. No distribuir en tiendas. Para producción usa HTTPS, retira `usesCleartextTraffic` y una firma release.
 
-## CI remoto — diagnóstico pendiente
+## CI remoto — validación
 
 La ejecución [CI de `453cd91`](https://github.com/ArturoYJ/Enlace-Seguro/actions/runs/42065193732) falló en las pruebas Chromium del Sandbox: el runner reportó `No usable sandbox` al iniciar Chromium con `chromiumSandbox: true`. En macOS esas pruebas pasaron localmente (11 aprobadas, 3 omitidas). La causa inmediata es la falta de un sandbox Chromium utilizable en ese runner; no se ha confirmado la configuración de AppArmor/user namespaces que la provoca. No desactivar el sandbox para obtener un CI verde. Los pasos posteriores del workflow no se ejecutaron en esa corrida.
+
+La [ejecución de `022f7d6`](https://github.com/ArturoYJ/Enlace-Seguro/actions/runs/42075712330) pasó completa con Chromium sandbox habilitado, pruebas de egress y contenedor hardened. Se fijó temporalmente Ubuntu 22.04; GitHub prevé retirarlo en abril de 2027, por lo que debe migrarse a un runner soportado antes de esa fecha. La configuración DNS sintética de Envoy usa permisos de lectura para el usuario no root del contenedor.
