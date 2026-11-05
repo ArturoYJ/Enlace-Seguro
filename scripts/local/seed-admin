@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$root/api"
+test -f .env.local || { echo 'Run scripts/local/configure first.' >&2; exit 1; }
+env -i PATH="$PATH" HOME="$HOME" node --env-file=.env.local -e '
+  if (process.env.MONGODB_URI !== "mongodb://127.0.0.1:27017/?replicaSet=rs0" || process.env.MONGODB_DB_NAME !== "enlaceseguro_dev") throw Error("Refusing nonlocal MongoDB target");
+'
+compose=(docker compose -f "$root/infra/local/docker-compose.yml")
+admin_count="$("${compose[@]}" exec -T mongo mongosh 'mongodb://127.0.0.1:27017/enlaceseguro_dev?replicaSet=rs0' --quiet --eval 'print(db.users.countDocuments({role:"admin"}))' | tr -d '\r')"
+[[ "$admin_count" =~ ^[01]$ ]] || { echo 'Unexpected admin count; inspect the database.' >&2; exit 1; }
+if [[ -L .env.admin.local || ( -e .env.admin.local && ! -f .env.admin.local ) ]]; then
+  echo 'Admin credentials must be a regular file, not a symlink.' >&2; exit 1
+fi
+if [[ "$admin_count" == 1 && ! -f .env.admin.local ]]; then
+  echo 'Admin exists but credentials are missing; refusing to replace the account.' >&2; exit 1
+fi
+umask 077
+if [[ ! -f .env.admin.local ]]; then
+  node -e 'const fs=require("node:fs"),c=require("node:crypto");fs.writeFileSync(".env.admin.local", "ADMIN_EMAIL=admin@enlaceseguro.local\nADMIN_PASSWORD="+c.randomBytes(24).toString("base64url")+"\n",{flag:"wx",mode:0o600})'
+  echo 'Credentials saved to api/.env.admin.local (private; do not commit).'
+fi
+if [[ "$admin_count" == 0 ]]; then
+  echo 'Provisioning local admin using the existing credentials file.'
+  env -i PATH="$PATH" HOME="$HOME" MONGODB_URI='mongodb://127.0.0.1:27017/?replicaSet=rs0' MONGODB_DB_NAME=enlaceseguro_dev node --env-file=.env.local --env-file=.env.admin.local --import tsx src/infrastructure/cli/seed-admin.ts
+fi
+# Verify the credentials correspond to the single admin, including after a failed or raced provisioning.
+env -i PATH="$PATH" HOME="$HOME" MONGODB_URI='mongodb://127.0.0.1:27017/?replicaSet=rs0' MONGODB_DB_NAME=enlaceseguro_dev node --env-file=.env.local --env-file=.env.admin.local --input-type=module <<'NODE'
+import { MongoClient } from 'mongodb';
+import bcrypt from 'bcrypt';
+const client = new MongoClient(process.env.MONGODB_URI);
+try {
+  if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD) throw Error('Incomplete admin credentials file');
+  await client.connect();
+  const users = client.db('enlaceseguro_dev').collection('users');
+  const admins = await users.find({role: 'admin'}).limit(2).toArray();
+  if (admins.length !== 1 || admins[0].emailNormalized !== process.env.ADMIN_EMAIL.trim().toLowerCase() ||
+      !(await bcrypt.compare(process.env.ADMIN_PASSWORD, admins[0].passwordHash))) {
+    throw Error('Admin account does not match local credentials; inspect manually');
+  }
+  console.log('Local admin account matches the private credentials file.');
+} finally { await client.close(); }
+NODE

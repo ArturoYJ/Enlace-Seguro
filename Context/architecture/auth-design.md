@@ -1,12 +1,22 @@
 # EnlaceSeguro — Diseño de Autenticación y Autorización
 
-**Estado:** Aprobado para implementación  
-**Fecha:** 2026-10-26  
+**Estado:** decisiones de auth aprobadas; backend presente; rate limit login implementado y validado en MongoDB desechable; cliente móvil en curso
+**Fecha de decisión:** 2026-10-26
+**Revisión de implementación:** 2026-11-04
 **Stack tecnológico confirmado:**
 - **Backend:** Node.js 22 LTS, TypeScript 5.x, Fastify 5.x
 - **Frontend móvil:** React Native
 - **Persistencia:** MongoDB 8.0.x Community Server
 - **Criptografía:** `bcrypt` (work factor 12), SHA-256 (hashing de tokens de refresco), JWT (HMAC-SHA256 / HS256)
+
+### Estado observado
+
+- Los casos de uso y adaptadores de autenticación existen bajo `api/src/`; `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout` y `/auth/me` aparecen en el contrato y las rutas.
+- En la verificación local del 2026-11-04, `api/npm test` reporta 76/76 pruebas unitarias, typecheck y build; además procesa TLS principal inválido como `inconclusive` sin veredicto y audita `analysis.inconclusive`. El worker emite snapshots JSON de baja cardinalidad sobre cola/leases/reintentos/edad sin IDs ni URL; no hay sink productivo ni thresholds/alertas. Shutdown del worker usa grace acotado derivado del timeout HTTP, no marca/reencola jobs y termina no-cero para recuperación por lease si vence. La suite HTTP+MongoDB 8.0.34 corre aparte con DB desechable e incluye worker durable Mongo, lease/fencing/recovery, snapshots de cola, login concurrente, admin, input cifrado 64 KiB, límite personal exacto 365×24 h y retención 366 días. Migraciones 004–006 se probaron desde strict 003 e idempotencia. Las entradas nuevas se cifran con AES-256-GCM mediante clave externa requerida. La autenticación API↔Sandbox usa token de servicio separado de JWT; `/health` queda sin auth y las rutas internas protegidas. Cap global Mongo singleton/transaccional implementado con migración 005 y probado en replica set desechable; staging SIGTERM/restart, thresholds/alertas y estrés multiproceso siguen pendientes.
+- El cliente móvil React Native tiene un primer slice parcial en `frontend/mobile/` (onboarding, acceso/registro, análisis manual, historial/detalle y cuenta/cuota/logout); no es la app completa ni se ha probado en dispositivo nativo.
+- `/auth/login` usa contadores compartidos en MongoDB con IDs HMAC pseudónimos: 20 intentos/IP/minuto y 10 fallos/cuenta/15 minutos; un slot de cuenta se reserva atómicamente antes de validar contraseña para contener ráfagas concurrentes y un login correcto limpia el bucket. Storage indisponible retorna 503 genérico (fail-closed); límite excedido retorna 429+`Retry-After`. Requiere `LOGIN_RATE_LIMIT_HMAC_KEY` consistente (32+ bytes, sin whitespace) y migración 002 antes del arranque. Proxy confiable solo con `TRUST_PROXY_CIDRS` explícitos; vacío = desactivado.
+
+El contenido de abajo sigue siendo la decisión de diseño aprobada; los ejemplos de código/schema ilustran el contrato y no necesariamente son el código ejecutado literal. Verificar siempre las rutas y pruebas actuales antes de atribuir comportamiento.
 
 ---
 
@@ -137,6 +147,8 @@ sequenceDiagram
 
 ### 4.2 Flujo de Inicio de Sesión (`POST /api/v1/auth/login`)
 
+El código vigente aplica primero los límites compartidos antes de consultar la cuenta: máximo 20 solicitudes por IP/1 minuto y máximo 10 fallos por cuenta normalizada/15 minutos. Los identificadores se derivan con HMAC; un login correcto borra el bucket de fallos de cuenta. El límite devuelve 429 con `Retry-After`; fallo del storage compartido devuelve 503 genérico (fail-closed). Ver [ADR-0004](../../docs/decisions/ADR-0004-login-rate-limit.md) para la política, proxy confiable y riesgos.
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -146,6 +158,11 @@ sequenceDiagram
 
     Cliente->>API: POST /api/v1/auth/login { email, password }
     API->>API: Normalizar email
+    API->>BD: Consumir reserva de límite IP/minuto
+    API->>BD: Reservar atómicamente intento de cuenta/15 minutos
+    alt Límite excedido o Mongo rate-limit indisponible
+        API-->>Cliente: 429 + Retry-After o 503 genérico (fail-closed)
+    else Límites permiten intento
     API->>BD: findOne en `users` por emailNormalized
     alt Usuario no existe o cuenta inactiva
         API->>API: Ejecutar dummy bcrypt.compare para mitigar timing attack
@@ -157,12 +174,14 @@ sequenceDiagram
             API->>BD: Inserción en `security_audit_events` { eventType: "auth.login.failed", outcome: "failure", actorId: user._id }
             API-->>Cliente: 401 Unauthorized ("Invalid credentials")
         else Contraseña válida
+            API->>BD: Borrar bucket compartido de fallos de cuenta
             API->>API: Generar Access Token (JWT 15m)
             API->>API: Generar Refresh Token (32 bytes random) y familyId (UUID v4)
             API->>BD: Inserción en `refresh_tokens` { userId, tokenHash, familyId, isRevoked: false, expiresAt }
             API->>BD: Inserción en `security_audit_events` { eventType: "auth.login.succeeded", outcome: "success", actorId: user._id }
             API-->>Cliente: 200 OK { accessToken, refreshToken, expiresIn: 900, tokenType: "Bearer" }
         end
+    end
     end
 ```
 

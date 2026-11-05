@@ -1,17 +1,34 @@
-%% Flujo propuesto según la propuesta académica; no acredita implementación.
+%% Flujo derivado del checkout actual; cliente móvil y API están parcialmente integrados. El estado no implica despliegue productivo.
 sequenceDiagram
   actor U as Usuario
-  participant M as App móvil
-  participant A as API REST
-  participant S as Sandbox
-  participant R as Fuentes de reputación
-  participant D as Almacenamiento (motor sin resolver)
-  U->>M: Comparte o pega enlace
-  M->>A: Envía solicitud de análisis
-  A->>A: Valida URL y límites
-  A->>S: Solicita inspección aislada
-  S-->>A: Señales, redirecciones y captura
-  A->>R: Consulta URL/destinos cuando disponibles
-  R-->>A: Respuestas o fallas de proveedor
-  A->>D: Persiste análisis (motor por confirmar)
-  A-->>M: Devuelve veredicto explicado
+  participant M as React Native (slice parcial)
+  participant A as API Fastify
+  participant D as MongoDB
+  participant W as Worker API (polling)
+  participant S as Sandbox Playwright
+  participant F as Almacenamiento local de capturas
+  participant P as Proveedores externos (no integrados)
+
+  U-->>M: Escribe/pega URL o mensaje (acción de pegar explícita)
+  M->>M: Extrae localmente una URL HTTP(S); rechaza cero/múltiples/invalidas
+  M->>A: POST /auth/login, /auth/register
+  A->>D: Autentica y persiste sesión/rate limit
+  A-->>M: JWT access + refresh
+  M->>A: POST /analyses { input }
+  A->>D: Transacción Mongo: reserva cap global + cuota max. 5 + job queued
+  A-->>M: 201 { attemptId, receivedAt, status: received }
+  W->>D: Poll + claim atómico; lease y fencing token
+  W->>D: Descifra input protegido solo dentro del worker API
+  W->>S: POST /analyze { attemptId, url } con Bearer interno
+  S->>S: Preflight URL/DNS, intercepta solicitudes, navega y evalúa señales
+  S->>F: Guarda WebP local; purga 30 días aprobada (scheduler/staging pendiente)
+  S-->>W: Estado/veredicto, razones, señales, redirecciones y local:// ref
+  W->>D: Guarda análisis con token vigente; retry/backoff o terminal/audit
+  M->>A: GET /analyses/{attemptId} o GET /analyses (poll/historial cursor)
+  A-->>M: Detalle/historial (sin bytes de captura)
+  M->>A: GET /analyses/{attemptId}/capture (solo cuando se habilite)
+  A->>S: GET /captures/{attemptId} por red privada
+  S-->>A: WebP validado
+  A-->>M: image/webp no-store (CAPTURE_PROXY_ENABLED=false por defecto)
+  Note over M,F: Proxy autenticado implementado pero gated; aislamiento de red y scheduler de purga en staging pendientes
+  Note over A,P: Consultas de reputación externas aún no implementadas; cap global vía transacción Mongo; staging/alertas aún pendientes

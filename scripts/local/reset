@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ $# -ne 1 || "$1" != '--confirm' ]]; then
+  echo 'Refusing reset. Use scripts/local/reset --confirm to delete the local MongoDB data volume.' >&2
+  exit 2
+fi
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+compose=(docker compose -p enlaceseguro-local -f "$root/infra/local/docker-compose.yml")
+volume='enlaceseguro-local_mongo-data'
+if lsof -nP -iTCP:3000 -sTCP:LISTEN >/dev/null 2>&1; then
+  echo 'Stop the local API and worker before resetting MongoDB.' >&2
+  exit 1
+fi
+if docker volume inspect "$volume" >/dev/null 2>&1; then
+  project="$(docker volume inspect "$volume" --format '{{ index .Labels "com.docker.compose.project" }}')"
+  [[ "$project" == 'enlaceseguro-local' ]] || { echo 'Volume project label mismatch; refusing reset.' >&2; exit 1; }
+  own_id="$("${compose[@]}" ps -aq mongo)"
+  while IFS= read -r id; do
+    [[ -z "$id" || "$id" == "$own_id" ]] || { echo 'Volume is attached to an unrelated container; refusing reset.' >&2; exit 1; }
+  done < <(docker ps -aq --filter "volume=$volume")
+fi
+echo 'Deleting the enlaceseguro-local MongoDB volume; other projects and local env files are preserved.'
+"${compose[@]}" down --volumes
+echo 'Reset complete. Run up and migrate before starting API. Existing admin credentials were not deleted.'

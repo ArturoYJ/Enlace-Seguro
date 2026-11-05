@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+compose=(docker compose -f "$root/infra/local/docker-compose.yml")
+uri='mongodb://127.0.0.1:27017/enlaceseguro_dev?replicaSet=rs0'
+if lsof -nP -iTCP:3000 -sTCP:LISTEN >/dev/null 2>&1; then
+  echo 'Stop the local API and worker before migrating.' >&2
+  exit 1
+fi
+"${compose[@]}" exec -T mongo mongosh "$uri" --quiet --eval '
+  if (!db.hello().isWritablePrimary) throw new Error("MongoDB is not primary");
+  if (db.getCollectionNames().length !== 0) throw new Error("Database is not empty; inspect migration state before proceeding");
+'
+tmp="$("${compose[@]}" exec -T mongo mktemp -d /tmp/enlaceseguro-migrate.XXXXXXXX | tr -d '\r')"
+[[ "$tmp" =~ ^/tmp/enlaceseguro-migrate\.[A-Za-z0-9]+$ ]] || { echo 'Unexpected temporary path.' >&2; exit 1; }
+trap '"${compose[@]}" exec -T mongo rm -rf -- "$tmp" >/dev/null 2>&1 || true' EXIT
+"${compose[@]}" cp "$root/database" "mongo:$tmp/database"
+for migration in 001_create_mongodb_schema.js 002_create_login_rate_limit_buckets.js 003_encrypt_analysis_inputs.js 004_durable_analysis_jobs.js 005_analysis_queue_capacity.js 006_extend_analysis_history_retention_366_days.js; do
+  echo "Applying $migration"
+  "${compose[@]}" exec -T --workdir "$tmp" mongo mongosh "$uri" --quiet --eval "globalThis.EnlaceSeguroExpectedDb='enlaceseguro_dev'; globalThis.EnlaceSeguroAnalysisJobMaxPending=20; load('database/migrations/$migration')"
+done
+echo 'Migrations 001–006 applied to enlaceseguro_dev; maxPending=20.'

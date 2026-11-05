@@ -1,0 +1,182 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Node 22 checks and disposable MongoDB suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            api/package-lock.json
+            sandbox/package-lock.json
+            frontend/mobile/package-lock.json
+            frontend/admin-console/package-lock.json
+
+      - name: Install API dependencies
+        working-directory: api
+        run: npm ci
+
+      - name: Install Sandbox dependencies
+        working-directory: sandbox
+        run: npm ci
+
+      - name: Install Chromium for Sandbox security policy tests
+        working-directory: sandbox
+        run: npx playwright install --with-deps chromium
+
+      - name: Install mobile dependencies
+        working-directory: frontend/mobile
+        run: npm ci
+
+      - name: Install admin console dependencies
+        working-directory: frontend/admin-console
+        run: npm ci
+
+      - name: Install Chromium for admin browser E2E
+        working-directory: frontend/admin-console
+        run: npx playwright install --with-deps chromium
+
+      - name: Audit dependencies (fail on moderate or higher)
+        run: |
+          set -euo pipefail
+          for package in api sandbox frontend/mobile frontend/admin-console; do
+            echo "Auditing $package"
+            npm --prefix "$package" audit --audit-level=moderate
+          done
+
+      - name: Check API types
+        working-directory: api
+        run: npm run typecheck
+
+      - name: Test API units
+        working-directory: api
+        run: npm test
+
+      - name: Build API
+        working-directory: api
+        run: npm run build
+
+      - name: Check Sandbox types
+        working-directory: sandbox
+        run: npm run typecheck
+
+      - name: Test Sandbox units
+        working-directory: sandbox
+        run: npm test
+
+      - name: Test Sandbox policy in real Chromium (loopback fixtures only)
+        working-directory: sandbox
+        run: npm run test:browser
+
+      - name: Test synthetic Sandbox egress boundary
+        run: |
+          set -euo pipefail
+          run_bounded() {
+            timeout --kill-after=15s 180s "$@"
+          }
+          run_bounded npm --prefix sandbox run test:egress-proxy
+          run_bounded npm --prefix sandbox run test:egress-rebinding
+          run_bounded npm --prefix sandbox run test:dns-resolver-outage
+          run_bounded npm --prefix sandbox run test:proxy-outage
+          run_bounded bash sandbox/egress-proxy/tests/topology-boundary.sh
+
+      - name: Build Sandbox
+        working-directory: sandbox
+        run: npm run build
+
+      - name: Verify hardened Sandbox container with Chromium sandbox enabled
+        working-directory: sandbox
+        run: npm run test:container-hardening
+
+      - name: Lint mobile app
+        working-directory: frontend/mobile
+        run: npm run lint
+
+      - name: Check mobile types
+        working-directory: frontend/mobile
+        run: npm run typecheck
+
+      - name: Test mobile routes and session lifecycle
+        working-directory: frontend/mobile
+        run: npm run test:ci
+
+      - name: Export mobile bundles
+        working-directory: frontend/mobile
+        run: npm run export
+
+      - name: Check admin console types
+        working-directory: frontend/admin-console
+        run: npm run typecheck
+
+      - name: Lint admin console
+        working-directory: frontend/admin-console
+        run: npm run lint
+
+      - name: Test admin console
+        working-directory: frontend/admin-console
+        run: npm test
+
+      - name: Build admin console
+        working-directory: frontend/admin-console
+        run: npm run build
+
+      - name: Run disposable MongoDB integration and schema suites
+        env:
+          MONGO_IMAGE: mongo:8.0.34
+        run: bash database/tests/run-mongodb-suite.sh
+
+      - name: Start disposable MongoDB replica set for admin browser E2E
+        env:
+          MONGO_IMAGE: mongo:8.0.34
+        run: bash database/tests/start-mobile-e2e-mongo.sh
+
+      - name: Run admin browser E2E against API and MongoDB
+        env:
+          CORS_ALLOWED_ORIGINS: http://127.0.0.1:4173
+          E2E_SEED_ADMIN: 'true'
+          VITE_API_BASE_URL: http://127.0.0.1:3000/api/v1
+        run: |
+          set -euo pipefail
+          api_pid=''
+          web_pid=''
+          cleanup() {
+            if [[ -n "$web_pid" ]]; then kill "$web_pid" 2>/dev/null || true; fi
+            if [[ -n "$api_pid" ]]; then kill "$api_pid" 2>/dev/null || true; fi
+          }
+          trap cleanup EXIT
+          (cd api && node --import tsx tests/e2e/server.ts) >"$RUNNER_TEMP/admin-e2e-api.log" 2>&1 &
+          api_pid=$!
+          (cd frontend/admin-console && ./node_modules/.bin/vite --host 127.0.0.1 --port 4173 --strictPort) >"$RUNNER_TEMP/admin-e2e-web.log" 2>&1 &
+          web_pid=$!
+          for _ in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:3000/api/v1/health >/dev/null && curl --silent --fail http://127.0.0.1:4173/ >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          if ! curl --silent --show-error --fail http://127.0.0.1:3000/api/v1/health >/dev/null || ! curl --silent --show-error --fail http://127.0.0.1:4173/ >/dev/null; then
+            cat "$RUNNER_TEMP/admin-e2e-api.log" "$RUNNER_TEMP/admin-e2e-web.log"
+            exit 1
+          fi
+          npm --prefix frontend/admin-console run test:e2e
+
+      - name: Stop disposable MongoDB replica set
+        if: always()
+        run: bash database/tests/stop-mobile-e2e-mongo.sh

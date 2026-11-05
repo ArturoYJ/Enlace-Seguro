@@ -1,29 +1,49 @@
-# Requisitos descritos en la propuesta
+# Requisitos, propuestas y estado observado
 
-**Estado de todos los puntos:** propuestos; no verificados como implementados.
+**Revisado:** 2026-11-04. El estado indicado se refiere al código del checkout local, no a un despliegue en producción.
 
 ## Funcionales
 
-1. Registrar e iniciar sesión para asociar análisis e historial con una cuenta.
-2. Recibir un enlace o mensaje que contenga un enlace y enviarlo a la API.
-3. Validar el enlace, aceptar solo HTTP/HTTPS y rechazar destinos locales/privados; volver a validar redirecciones.
-4. Enviar el destino a un sandbox aislado para carga automatizada, observación de señales y captura.
-5. Consultar fuentes de reputación externas cuando credenciales y cuotas estén disponibles.
-6. Guardar el análisis y mostrar categoría, razones, destino final, fuentes consultadas y captura.
-7. Consultar historial personal paginado y detalle de un análisis.
+| Requisito | Estado observado | Evidencia / límite |
+|---|---|---|
+| Registrar e iniciar sesión; asociar análisis e historial con cuenta. | Parcial: backend presente; cliente con pruebas iniciales. | `frontend/mobile/src/app/auth/`; refresh token en SecureStore y access token en memoria. Se probaron refresh temporal/invalidado, estado de sesión y logout; registro contra API, flujos completos y QA nativa aún faltan. |
+| Pegar o compartir un enlace o mensaje con enlace. | Parcial: entrada manual o pegado de URL/mensaje; sharing externo diferido por decisión del propietario. | El cliente acepta hasta 480 caracteres, extrae localmente una sola URL HTTP(S) y solo envía esa URL a `POST /analyses`; el texto circundante no sale de memoria local. No hay share intents. Ver `../../docs/architecture/incoming-share-viability.md`. |
+| Admitir solicitud y aplicar cuota de cinco análisis por día local. | Implementado en backend; prueba unitaria pasa. | `SubmitAnalysisUseCase` + `MongoDailyAnalysisRepository`; `America/Mexico_City`; sexto intento produce cuota excedida. No persistir rechazo. Se corrigió el test para derivar la fecha actual, no se alteró lógica productiva. |
+| Validar HTTP/HTTPS, destinos privados y redirecciones para reducir SSRF. | Implementado parcialmente. | `sandbox/src/core/AntiSsrfGuard.ts` y `PlaywrightContextPool.ts`; suite cubre esquemas y rangos IP. No acredita aislamiento de red a nivel de infraestructura ni protección ante todos los casos de DNS/rebinding. |
+| Visitar el sitio en navegador aislado, limitar privilegios/tiempo, bloquear descargas y capturar. | Servicio sandbox y controles parciales; aislamiento de despliegue no verificado. | Pool Playwright, permisos vacíos, `ignoreHTTPSErrors:false`, `acceptDownloads:false` y `serviceWorkers:'block'` configurados; `ERR_CERT_*` observado en documento o subrecurso termina `inconclusive` sin veredicto/captura. Deadline global default 25 s incluye DNS, cola y operaciones Chromium; timeout devuelve 504 reintentable y no veredicto. Nueve pruebas Chromium loopback cubren pool real, TLS principal/subrecursos, solicitudes SSRF secundarias, deadline, SW, adjuntos y WebP; no prueban destinos públicos ni egress. DNS del sistema y almacenamiento local no admiten cancelación inmediata; smoke Docker hardened local ahora pasa con perfil seccomp Playwright fijado, `SYS_CHROOT` como única capacidad añadida, read-only, no-new-privileges y red desconectada (ADR-0010). Chromium usa `chromiumSandbox:true`; aún faltan runner Linux y runtime staging/cloud, aislamiento de red/egress y AppArmor efectivo. |
+| Consultar VirusTotal, Google Safe Browsing, URLhaus o RDAP/WHOIS. | Propuesto, no implementado. | No hay adaptadores encontrados. `sourceResults` actuales son resultado del sandbox/guardas, no de esos proveedores. |
+| Guardar y presentar veredicto, razones, destino, señales y redirecciones. | Parcial: API/cliente conectados para primer flujo. | `frontend/mobile/src/app/analysis.tsx` consume `/analyses` y detalle con backoff acotado. Inicio muestra hasta tres análisis recientes reales vía `GET /analyses?limit=3`, mostrando solo hostname, fecha y estado/veredicto, más métricas reales de `/analyses/summary` con estados loading/error/empty. OpenAPI `AnalysisSummaryItem` ahora refleja el objeto `analysis` anidado del runtime. UI/API tests controlados e integración HTTP+Mongo cubren flujo; faltan E2E desde app y QA nativa. Los jobs son durables en Mongo embebido con polling, lease/fencing y reintentos; migraciones 004/005/006 y recuperación local se probaron en replica set desechable, no en staging/multiproceso. |
+| Mostrar en Inicio métricas personales de análisis/peligrosos/sospechosos de Figma. | Implementado en API y app; QA nativa pendiente. | `GET /analyses/summary`, autenticado y owner-scoped, sin `userId`/fechas del cliente. Ventana exacta `[now − 365×24 h, now)` filtrada por `receivedAt`; total cuenta todos los intentos admitidos y peligrosos/sospechosos solo veredictos persistidos. Historial `daily_analyses` retención 366 días, anclada al intento más reciente del documento diario; cifras Figma no son reales. Suite API/Mongo y UI pasan localmente. |
+| Mostrar captura del análisis. | Parcial, deshabilitado en móvil. | Playwright produce WebP real; storage rechaza PNG mal etiquetado y symlink final. Purgador local a 30 días tiene tests, pero aún no tiene scheduler ni validación staging. La API implementa proxy autenticado, verificación de propiedad y WebP; E2E local Mongo/API/worker/Sandbox/Chromium prueba captura limpia real y respuesta WebP por proxy; pruebas de autorización owner/cross-owner están en integración API separada. Proxy deshabilitado hasta demostrar aislamiento privado; captura sigue deshabilitada en cliente. Sandbox expone `GET /captures/:attemptId`, no directamente al móvil. |
+| Historial paginado y detalle. | Parcial: cliente conectado a API. | `/history` usa cursor de `GET /analyses` y abre detalle autenticado con `localDate`; suite API↔Mongo comprueba paginación sin saltos/duplicados y acceso cross-owner 404. Falta prueba extremo a extremo desde app móvil. |
+| Cuenta, avisos de sesión expirada, desconexión y cuota. | Parcial. | `/account` muestra perfil/cuota real y Inicio presenta cuota con carga/error/reintento local, sin dato viejo ni mensaje interno; cerrar sesión requiere confirmación y especifica este dispositivo. Ante fallo de perfil expone reintento manual y acceso a login. La pantalla 5.2 aparece al confirmar token expirado; los avisos 5.4/5.5 distinguen error de transporte vs 429 real y evitan simular límite/fecha. Falta E2E móvil/QA integrada. Logout global requiere verificar handler antes de confiar en `allDevices:true`. No hay push. |
+| Métricas y auditoría administrativa. | Backend y consola independiente presentes; QA visual y despliegue pendientes. | `/admin/audit-events` y `/admin/metrics` exigen rol admin; ambos filtros de fechas son días civiles inclusivos de `America/Mexico_City`. `frontend/admin-console/` usa Vite + React/TypeScript, tokens en memoria, login, métricas y auditoría. Nueve pruebas, typecheck, lint y build pasan; E2E fixture-only con Chromium y axe-core no encontró violaciones A/AA en las vistas cubiertas. Falta comparación visual con Figma, revisión manual, API/hosting/CORS reales. |
 
 ## Seguridad y límites
 
-- El navegador de análisis debe usar contexto limpio, privilegios mínimos, permisos restringidos, bloqueo de descargas y límites de tiempo/recursos.
-- Los sandboxes no deben tener acceso a la API, la base de datos ni otros sandboxes.
-- Las llaves externas deben permanecer del lado del servidor.
-- Un fallo de proveedor debe quedar visible como resultado parcial/no concluyente.
-- “Sin amenazas detectadas” no debe presentarse como “seguro garantizado”.
+- La app móvil nunca debe conectarse directamente con MongoDB; todo acceso va por la API.
+- Las llaves de proveedores externos, cuando se integren, deben permanecer del lado del servidor.
+- El resultado “sin amenazas detectadas” no significa “seguro garantizado”.
+- No hay adaptadores de reputación externos. `inconclusive` existe para TLS inválido observado en documento principal o subrecurso y se integra con worker/API; no representa aún fallos de proveedores externos.
+- Las referencias `local://` de captura no son URLs consumibles por una app. El endpoint API autenticado de captura ya existe pero permanece deshabilitado; no exponer el sandbox al móvil como sustituto.
+- `/auth/login` implementa rate limit independiente de cuota diaria: 20 intentos/IP/minuto y 10 fallos por cuenta/15 minutos con Mongo compartido/HMAC; 429 incluye `Retry-After`, indisponibilidad del storage resulta en 503 fail-closed. Validado en MongoDB 8.0.34 desechable. La cuota de análisis conserva su política independiente.
+- El usuario aprobó conservar hasta 64 KiB UTF-8 de entrada cifrada bajo la retención diaria de 366 días (baseline no productivo) cifrados AES-256-GCM antes de persistir; el adapter descifra para procesamiento/historial. Migration 003/readiness y pruebas 64 KiB pasan en Mongo desechable. Falta secret manager, backup/rotación de clave, política productiva de retención y eliminación.
+- No declarar aislamiento de contenedor/red verificado sin configuración y pruebas de despliegue.
+- Las rutas internas de Sandbox ahora requieren `SANDBOX_SERVICE_TOKEN` compartido con la API; `/health` es público. CORS fue retirado. Esto no cifra tráfico ni sustituye red privada, identidad de workload y egress verificados.
+- Chromium usa TLS estricto (`ignoreHTTPSErrors:false`) y `chromiumSandbox:true`; `ERR_CERT_*` observado en documento principal o subrecurso produce `inconclusive/tls_certificate_invalid` sin veredicto/captura. Deadline 25 s aborta contexto y devuelve error reintentable, sin veredicto; pruebas Chromium loopback cubren navegación colgada y TLS. El Dockerfile no-root supera smoke hardened local con perfil seccomp Playwright fijado y `SYS_CHROOT` como única capacidad añadida; no se debilitó Chromium. DNS/FS no cancelables, límites de proceso, aislamiento de red/egress y runtime de despliegue siguen pendientes.
 
-## Preguntas abiertas
+## Referencia visual móvil
 
-- ¿El motor final de la práctica de modelado es MongoDB o el almacenamiento del proyecto continúa siendo PostgreSQL?
-- ¿Cuáles son los endpoints, política de cuota y esquema final? No se fijan aquí porque las fuentes no los definen de forma suficiente.
-- ¿Qué funciones de la propuesta están realmente implementadas? Requiere inspección del código y pruebas.
+La selección registrada para la primera fase es **replicar todos los grupos de pantalla de Figma** en React Native, manteniendo como no implementadas/pendientes las funciones que no tengan soporte local. No se modifica la API para ajustarla al Figma sin una decisión aprobada y un diseño previo.
 
-**Fuente principal:** propuesta académica local (véase el [registro de fuentes](sources.md)); no está publicada en el repositorio. El alcance MongoDB procede de `database/modeling/access-patterns.csv` y se mantiene diferenciado.
+## Preguntas técnicas abiertas
+
+1. Verificar aislamiento privado API↔Sandbox en staging y, solo tras cerrar ese gate, habilitar `GET /analyses/{attemptId}/capture` (`CAPTURE_PROXY_ENABLED=false` por defecto). El endpoint ya implementa autenticación, propiedad, proxy privado, WebP y no-store; no exponer la ruta interna Sandbox al cliente.
+2. Definir si y cuándo se integrarán proveedores externos de reputación, sus fallos y el estado inconcluso.
+3. Completar el cliente móvil React Native conforme al plan aprobado `../../docs/roadmap/mobile-implementation-plan.md`; autenticación, análisis, historial, detalle y cuenta están conectados en forma parcial. La pantalla de análisis anuncia transiciones de estado/veredicto a lectores de pantalla con deduplicación por intento; falta QA VoiceOver/TalkBack en dispositivos, paridad visual total y E2E instalado.
+4. Verificar seguridad de red/contenedor y revisar las opciones de Chromium/validación TLS. El contrato lógico cloud-neutral está en [`network-boundary-contract.md`](../../docs/security/network-boundary-contract.md); su aprobación/documentación no sustituye las pruebas de ACL, egress e identidad en staging.
+5. Suite MongoDB 8.0.34 desechable como replica set valida bootstrap+migraciones 001–006, upgrade desde strict 003, cap global transaccional entre clientes, paginación, TTL, resumen de ventana exacta `[now−365×24 h, now)`/retención 366 días, matriz (55 aserciones, incluido sobre cifrado de 64 KiB), 22 smoke assertions, explain, flujo API/worker/Sandbox HTTP sintético y dos casos API/worker/Sandbox/Chromium reales, fechas admin de México y dump/restore lógico. La última ejecución integral local pasó el 2026-11-04. No sustituye migración en staging, backup/PITR administrados ni restore persistente.
+
+## Fuente y estado de la propuesta
+
+La propuesta académica local (véase [`sources.md`](sources.md)) describe el objetivo y algunas tecnologías originales: Flutter/Dart y PostgreSQL 16. Es antecedente, no la selección vigente del checkout. El stack actual aprobado para este proyecto se documenta en [`../architecture/auth-design.md`](../architecture/auth-design.md); el alcance del ejercicio de modelado MongoDB conserva su fuente en [`../../database/modeling/access-patterns.csv`](../../database/modeling/access-patterns.csv).

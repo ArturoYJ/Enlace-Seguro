@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$root/frontend/admin-console"
+test -f .env.local || { echo 'Run scripts/local/configure first.' >&2; exit 1; }
+echo 'Open http://localhost:5173/ (the API CORS policy permits this origin).'
+exec npm run dev -- --host 127.0.0.1 --port 5173 --strictPort

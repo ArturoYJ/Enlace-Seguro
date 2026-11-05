@@ -1,0 +1,41 @@
+#!/usr/bin/env node
+// Create local-only configuration once; existing secrets and user files are never overwritten.
+const fs = require('node:fs');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const net = require('node:net');
+const { execFileSync } = require('node:child_process');
+const root = path.resolve(__dirname, '../..');
+const targets = ['api/.env.local', 'sandbox/.env.local', 'frontend/mobile/.env.local', 'frontend/admin-console/.env.local'];
+const existing = targets.filter(file => fs.existsSync(path.join(root, file)));
+if (existing.length) {
+  console.error(`Refusing to overwrite existing local configuration: ${existing.join(', ')}`);
+  process.exit(1);
+}
+let ip = process.argv[2];
+if (!ip) {
+  try { ip = execFileSync('ipconfig', ['getifaddr', 'en0'], { encoding: 'utf8' }).trim(); }
+  catch { console.error('Cannot determine Wi-Fi address. Supply the Mac LAN IPv4 address as an argument.'); process.exit(1); }
+}
+if (net.isIP(ip) !== 4 || ip.startsWith('127.') || ip === '0.0.0.0') {
+  console.error('Provide a non-loopback IPv4 address for the local network.'); process.exit(1);
+}
+const secret = () => crypto.randomBytes(32).toString('base64url');
+const shared = secret();
+const replace = (content, key, value) => {
+  const pattern = new RegExp(`^${key}=.*$`, 'm');
+  if (!pattern.test(content)) throw new Error(`Missing ${key} in example configuration`);
+  return content.replace(pattern, `${key}=${value}`);
+};
+let api = fs.readFileSync(path.join(root, 'api/.env.example'), 'utf8');
+for (const [key, value] of Object.entries({
+  SANDBOX_SERVICE_TOKEN: shared, JWT_SECRET: secret(), LOGIN_RATE_LIMIT_HMAC_KEY: secret(),
+  ANALYSIS_INPUT_ENCRYPTION_KEY: secret(), ANALYSIS_JOB_MAX_PENDING: '20',
+  MONGODB_URI: 'mongodb://127.0.0.1:27017/?replicaSet=rs0',
+  CORS_ALLOWED_ORIGINS: 'http://localhost:5173',
+})) api = replace(api, key, value);
+let sandbox = fs.readFileSync(path.join(root, 'sandbox/.env.example'), 'utf8');
+sandbox = replace(replace(sandbox, 'SANDBOX_SERVICE_TOKEN', shared), 'HOST', '127.0.0.1');
+const files = [api, sandbox, `EXPO_PUBLIC_API_URL=http://${ip}:3000/api/v1\n`, 'VITE_API_BASE_URL=http://localhost:3000/api/v1\n'];
+for (let i = 0; i < targets.length; i++) fs.writeFileSync(path.join(root, targets[i]), files[i], { flag: 'wx', mode: 0o600 });
+console.log(`Local configuration created. Mobile API: http://${ip}:3000/api/v1`);

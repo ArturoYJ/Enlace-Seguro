@@ -1,6 +1,14 @@
-%% Vista simplificada del grafo canónico system.json. Elementos propuestos; persistencia sin motor resuelto.
+%% Estado al 2026-11-04. Sólido = código/decisión vigente comprobada; punteado = app o integración futura.
 flowchart LR
-  Mobile["App móvil\nFlutter/Dart — propuesta"] --> API["API REST\nFastify — propuesta"]
-  API -. "persistencia: motor sin resolver" .-> DB["Decisión de almacenamiento\nPostgreSQL vs MongoDB"]
-  API --> Sandbox["Pool sandbox\n3 servicios — propuesta"]
-  API --> Reputation["Fuentes de reputación\nsi están disponibles"]
+  Mobile["App móvil React Native<br/>implementación parcial"] -->|"auth / análisis / historial / detalle / cuenta"| API["API REST<br/>Fastify + TypeScript"]
+  API -->|"CRUD y cuota diaria"| DB[("MongoDB 8.0.x")]
+  API -->|"HTTP Bearer /analyze; health sin token"| Sandbox["Servicio sandbox<br/>Fastify + pool Playwright"]
+  Sandbox -->|"WebP real + local:// ref; purga scheduler/staging pendiente"| Captures[("Capturas locales")]
+  Sandbox -->|"veredicto, señales, redirecciones, referencia"| API
+  API -. "sin adaptadores aún" .-> Reputation["VirusTotal / Safe Browsing / URLhaus"]
+
+  API -.->|"GET /analyses/{attemptId}/capture; deshabilitado por defecto"| Captures
+  Note["Límite: proxy de captura implementado pero gated; aislamiento de red/contenedor aún sin verificar"]:::note
+  Sandbox -.-> Note
+  API -.-> Note
+  classDef note fill:#fff3cd,stroke:#a87500,color:#332b00;

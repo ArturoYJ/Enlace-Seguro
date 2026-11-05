@@ -1,9 +1,9 @@
 {
   "$schema": "./system.schema.json",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "statusSemantics": {
-    "confirmed": "Respaldado por una fuente o verificación citada; no significa por sí solo que esté implementado.",
-    "proposed": "Descrito como intención de diseño en una fuente del proyecto.",
+    "confirmed": "Respaldado por una decisión vigente o por inspección directa del código; no implica despliegue ni validación productiva.",
+    "proposed": "Descrito como intención/alcance futuro y no implementado en el checkout actual.",
     "unknown": "No decidido o no verificado con la evidencia disponible."
   },
   "nodes": [
@@ -22,12 +22,20 @@
     {
       "id": "mobile-app",
       "type": "client",
-      "name": "Aplicación móvil React Native",
+      "name": "Aplicación móvil React Native (implementación parcial)",
       "status": "confirmed",
       "sources": [
         {
-          "path": "../architecture/auth-design.md",
-          "claim": "El usuario confirmó React Native para la aplicación móvil."
+          "path": "auth-design.md",
+          "claim": "React Native es la decisión vigente aprobada para el cliente móvil."
+        },
+        {
+          "path": "../../frontend/mobile/README.md",
+          "claim": "Expo SDK 57/Router tiene onboarding, auth, guards de sesión expirada, análisis manual de URL/mensaje con extracción local de una URL, avisos offline/cuota, historial/detalle y cuenta con confirmación de logout en implementación parcial; 63 pruebas UI usan respuestas controladas y no sustituyen E2E instalado ni QA nativa."
+        },
+        {
+          "path": "../../docs/roadmap/mobile-implementation-plan.md",
+          "claim": "La spec móvil fue aprobada y el plan documenta fases, gates y pendientes."
         }
       ]
     },
@@ -38,60 +46,80 @@
       "status": "confirmed",
       "sources": [
         {
-          "path": "../architecture/auth-design.md",
-          "claim": "El usuario confirmó Node.js 22, TypeScript y Fastify para la API."
+          "path": "../../api/README.md",
+          "claim": "El README de la API identifica su stack vigente."
+        },
+        {
+          "path": "../../api/src/presentation/routes/analysisRoutes.ts",
+          "claim": "Hay rutas de admisión de análisis, historial paginado y detalle; las rutas de autenticación y administración se encuentran en sus módulos correspondientes."
         }
       ]
     },
     {
       "id": "database-engine",
-      "type": "unresolved-decision",
-      "name": "Motor de almacenamiento",
-      "status": "unknown",
-      "alternatives": [
-        {
-          "name": "PostgreSQL 16",
-          "status": "proposed",
-          "source": "../project/sources.md#proposal-local"
-        },
-        {
-          "name": "MongoDB / base documental",
-          "status": "proposed",
-          "source": "../../database/modeling/access-patterns.csv"
-        }
-      ],
+      "type": "document-database",
+      "name": "MongoDB 8.0.x Community Server",
+      "status": "confirmed",
       "sources": [
         {
-          "path": "../project/sources.md#proposal-local",
-          "claim": "La propuesta especifica PostgreSQL 16."
+          "path": "auth-design.md",
+          "claim": "MongoDB 8.0.x es el motor seleccionado para el stack vigente del proyecto."
         },
         {
-          "path": "../../database/modeling/access-patterns.csv",
-          "claim": "El artefacto del ejercicio especifica MongoDB como objetivo de modelado."
+          "path": "../../api/src/infrastructure/database/mongo/MongoDailyAnalysisRepository.ts",
+          "claim": "La API incluye repositorio de persistencia MongoDB para análisis diarios."
+        },
+        {
+          "path": "../project/sources.md#proposal-local",
+          "claim": "La propuesta original mencionaba PostgreSQL 16; queda como antecedente y no como elección vigente."
         }
       ]
     },
     {
       "id": "sandbox-pool",
-      "type": "isolated-service-pool",
-      "name": "Servicio sandbox con pool configurable de Playwright/Chromium",
+      "type": "service-with-browser-pool",
+      "name": "Servicio sandbox Fastify con pool configurable de contextos Playwright/Chromium",
       "status": "confirmed",
       "sources": [
         {
-          "path": "../architecture/auth-design.md",
-          "claim": "El usuario aprobó unificar en un servicio sandbox con pool de contextos Playwright."
+          "path": "../../sandbox/src/infrastructure/PlaywrightContextPool.ts",
+          "claim": "Existe un servicio con concurrencia configurable y contextos de navegador temporales; el contexto configura acceptDownloads:false y serviceWorkers:block. Nueve pruebas Chromium loopback ejercitan el pool real e incluyen TLS principal/subrecursos, solicitudes SSRF secundarias, deadline, service workers, adjuntos y WebP; smoke local del contenedor endurecido valida arranque/userns bajo perfil seccomp fijado (ADR-0010), pero no valida runner Linux, DNS rebinding, egress ni ACL de staging/cloud."
+        },
+        {
+          "path": "../../api/src/infrastructure/sandbox/HttpSandboxService.ts",
+          "claim": "La API valida la URL Sandbox, exige HTTPS explícito en producción, solo permite HTTP loopback fuera de producción y no sigue redirects; envía SANDBOX_SERVICE_TOKEN Bearer al analizar y health check permanece sin token. Esto no acredita TLS/ACL de despliegue."
+        }
+      ]
+    },
+    {
+      "id": "capture-storage",
+      "type": "local-file-storage",
+      "name": "Capturas WebP locales con purga y proxy gateados",
+      "status": "confirmed",
+      "sources": [
+        {
+          "path": "../../sandbox/src/infrastructure/ScreenshotStorage.ts",
+          "claim": "El almacenamiento acepta y sirve solo bytes con firma RIFF/WEBP, usa extensión .webp y devuelve local://; la purga local diaria con simulación por defecto tiene pruebas, pero no hay scheduler ni operación en staging."
+        },
+        {
+          "path": "../../sandbox/src/presentation/sandboxServer.ts",
+          "claim": "El servicio sandbox implementa GET /captures/:attemptId protegido por token Bearer de servicio; la ruta interna no se expone al cliente."
+        },
+        {
+          "path": "../../api/src/presentation/routes/analysisRoutes.ts",
+          "claim": "La API implementa GET /analyses/{attemptId}/capture con autenticación, comprobación de propiedad, proxy de WebP y no-store; CAPTURE_PROXY_ENABLED=false por defecto hasta verificar red privada en staging."
         }
       ]
     },
     {
       "id": "reputation-sources",
       "type": "external-services",
-      "name": "Fuentes de reputación previstas",
+      "name": "Proveedores de reputación externa (no integrados)",
       "status": "proposed",
       "sources": [
         {
           "path": "../project/sources.md#proposal-local",
-          "claim": "VirusTotal, Google Safe Browsing y URLhaus; RDAP/WHOIS como señal condicionada."
+          "claim": "VirusTotal, Google Safe Browsing y URLhaus figuran como integraciones propuestas; no se encontraron adaptadores en api/ o sandbox/."
         }
       ]
     }
@@ -101,12 +129,12 @@
       "id": "mobile-sends-request",
       "from": "mobile-app",
       "to": "api",
-      "relation": "sends-analysis-request-and-displays-result",
-      "status": "proposed",
+      "relation": "sends-auth-and-analysis-requests",
+      "status": "confirmed",
       "sources": [
         {
-          "path": "../project/sources.md#proposal-local",
-          "claim": "Flujo funcional propuesto."
+          "path": "../project/requirements.md",
+          "claim": "frontend/mobile implementa integración parcial con auth, perfil/cuota, análisis de URL/mensaje con extracción local, avisos server-backed de error de transporte/cuota, historial, detalle, pantalla de sesión expirada y confirmación de logout. Las 63 pruebas UI usan respuestas controladas; la integración E2E instalada desde la app, QA nativa y publicación siguen pendientes."
         }
       ]
     },
@@ -114,12 +142,12 @@
       "id": "api-persists-data",
       "from": "api",
       "to": "database-engine",
-      "relation": "persists-accounts-and-analysis-history",
-      "status": "unknown",
+      "relation": "persists-accounts-audit-and-daily-analyses",
+      "status": "confirmed",
       "sources": [
         {
-          "path": "../project/sources.md#proposal-local",
-          "claim": "La propuesta requiere persistencia, pero el motor objetivo está en conflicto con el artefacto BDaaS."
+          "path": "../../api/src/infrastructure/database/mongo/MongoDailyAnalysisRepository.ts",
+          "claim": "La API tiene adaptadores MongoDB para persistencia de análisis diarios y repositorios relacionados."
         }
       ]
     },
@@ -127,12 +155,67 @@
       "id": "api-dispatches-browser-analysis",
       "from": "api",
       "to": "sandbox-pool",
-      "relation": "dispatches-isolated-browser-analysis",
-      "status": "proposed",
+      "relation": "dispatches-analysis-over-http",
+      "status": "confirmed",
       "sources": [
         {
-          "path": "../project/sources.md#proposal-local",
-          "claim": "La API coordinaría el análisis en sandboxes."
+          "path": "../../api/src/use-cases/analysis/ProcessAnalysisJobUseCase.ts",
+          "claim": "El caso de uso procesa un intento consultando el servicio sandbox."
+        },
+        {
+          "path": "../../api/src/infrastructure/sandbox/HttpSandboxService.ts",
+          "claim": "El adaptador adjunta autenticación Bearer de servicio a POST /analyze."
+        },
+        {
+          "path": "../../api/src/infrastructure/workers/AnalysisJobWorker.ts",
+          "claim": "El worker consulta MongoDB, reclama jobs con lease y usa el token de fencing para impedir que un worker vencido confirme el resultado."
+        }
+      ]
+    },
+    {
+      "id": "sandbox-stores-capture",
+      "from": "sandbox-pool",
+      "to": "capture-storage",
+      "relation": "writes-local-webp-captures",
+      "status": "confirmed",
+      "sources": [
+        {
+          "path": "../../sandbox/src/infrastructure/PlaywrightContextPool.ts",
+          "claim": "PlaywrightContextPool captura WebP; ScreenshotStorage rechaza bytes PNG mal etiquetados y sandboxServer declara image/webp. La firma y persistencia se probaron con Chromium real."
+        }
+      ]
+    },
+    {
+      "id": "api-proxies-capture",
+      "from": "api",
+      "to": "capture-storage",
+      "relation": "proxies-owner-capture-only-when-network-gate-enabled",
+      "status": "confirmed",
+      "sources": [
+        {
+          "path": "../../api/src/presentation/routes/analysisRoutes.ts",
+          "claim": "La API requiere sesión autenticada y valida propiedad antes de solicitar la captura al servicio privado; el proxy está desactivado por defecto hasta verificar aislamiento."
+        },
+        {
+          "path": "../../api/src/index.ts",
+          "claim": "CAPTURE_PROXY_ENABLED acepta false/true y su default es false."
+        }
+      ]
+    },
+    {
+      "id": "sandbox-returns-analysis",
+      "from": "sandbox-pool",
+      "to": "api",
+      "relation": "returns-verdict-signals-redirects-and-capture-reference",
+      "status": "confirmed",
+      "sources": [
+        {
+          "path": "../../api/src/infrastructure/sandbox/HttpSandboxService.ts",
+          "claim": "El adaptador HTTP de API recibe el resultado del sandbox, incluidos sourceResults y screenshotRef."
+        },
+        {
+          "path": "../../api/src/use-cases/analysis/ProcessAnalysisJobUseCase.ts",
+          "claim": "El backend persiste resultados normales como completed y `inconclusive/tls_certificate_invalid` sin veredicto cuando Chromium observa ERR_CERT_* en el documento o subrecursos; hay pruebas loopback del pool completo y de integración API/Mongo para TLS inconcluso y captura WebP real por proxy."
         }
       ]
     },
@@ -140,12 +223,12 @@
       "id": "api-queries-reputation",
       "from": "api",
       "to": "reputation-sources",
-      "relation": "queries-reputation-when-available",
+      "relation": "queries-reputation-when-adapters-are-added",
       "status": "proposed",
       "sources": [
         {
-          "path": "../project/sources.md#proposal-local",
-          "claim": "Las consultas dependen de credenciales, cuotas y disponibilidad."
+          "path": "../project/requirements.md",
+          "claim": "Los proveedores externos están propuestos, sin adaptadores encontrados en el código actual."
         }
       ]
     }

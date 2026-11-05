@@ -19,5 +19,5 @@ El proyecto necesita continuidad cronológica de trabajo realizado por agentes, 
 
 - Herramientas que no descubran archivos neutrales automáticamente deberán recibir una indicación de leer `Agents/README.md`.
 - El JSON y sus vistas Mermaid requieren revisión coordinada para evitar deriva.
-- El modelado físico queda bloqueado hasta resolver PostgreSQL frente a MongoDB.
+- En la fecha de esta ADR, el modelado físico se consideraba bloqueado por PostgreSQL frente a MongoDB. La decisión posterior seleccionó MongoDB 8.0.x para el checkout; el conflicto queda como antecedente de la propuesta original. Ver [ADR-0002](ADR-0002-atomic-quota-and-embedded-daily-analysis.md) y [`../architecture/auth-design.md`](../architecture/auth-design.md).
 - Los archivos fuente existentes se conservan; los cambios de ruta se validan por contenido.

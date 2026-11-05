@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$root"
+test -f api/.env.admin.local || { echo 'Run scripts/local/seed-admin first.' >&2; exit 1; }
+curl --fail --silent --show-error --max-time 5 http://127.0.0.1:3000/api/v1/health >/dev/null
+curl --fail --silent --show-error --max-time 5 http://127.0.0.1:3001/health >/dev/null
+curl --fail --silent --show-error --max-time 5 http://localhost:5173/ >/dev/null
+echo 'Local service health checks passed.'
+node --test tests/local/fixture-server.test.mjs
+env -i PATH="$PATH" HOME="$HOME" node --env-file=api/.env.admin.local tests/local/admin-browser.mjs
+echo 'Running isolated Mongo/API/worker/Sandbox integration suite with disposable fixtures.'
+bash database/tests/run-mongodb-suite.sh
+echo 'Smoke checks passed. iPhone and real URL tests are separate.'

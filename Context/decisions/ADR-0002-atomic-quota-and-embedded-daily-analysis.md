@@ -36,20 +36,13 @@ Separar el almacenamiento en dos colecciones:
 
 Unificar la partición diaria y los intentos de análisis en un solo documento por usuario y día en la colección `daily_analyses`:
 *   Estructura: `{ userId, localDate, attempts: [Attempt], purgeAt }`
-*   Flujo: Ejecutar un único `findOneAndUpdate` atómico a nivel de documento con filtro condicional:
-    ```javascript
-    {
-      userId: ObjectId,
-      localDate: "YYYY-MM-DD",
-      $expr: { $lt: [{ $size: { $ifNull: ["$attempts", []] } }, 5] },
-      "attempts.attemptId": { $ne: newAttemptId }
-    }
-    ```
-    combinado con operador `$push: { attempts: newAttempt }` y `upsert: true`.
+*   Flujo: ejecutar un único `findOneAndUpdate` atómico por `{ userId, localDate }`, usando una actualización pipeline que evalúa longitud y duplicidad dentro del documento y concatena el intento solo si hay capacidad. El filtro de identidad excluye el mismo `attemptId`; los índices únicos diario/global cubren carreras de upsert y el adaptador traduce colisiones a `duplicate_attempt_id` o `quota_exceeded`.
+
+    **Restricción descubierta en validación:** MongoDB 8.0.34 rechaza `$expr` dentro de un filtro usado con `upsert` (`QueryFeatureNotAllowed`, código 224). Por ello, la condición de cuota vive en el pipeline de actualización; la sintaxis ejecutable está en `api/src/infrastructure/database/mongo/MongoDailyAnalysisRepository.ts`.
 
 **Análisis Adversarial (Evaluación de Riesgos y Mitigación):**
-*   *¿Riesgo de exceder el límite BSON de 16 MiB?*  
-    *Verificación:* Con un límite duro de $5$ intentos por documento, un límite de entrada UTF-8 cruda $\le 8\text{ KiB}$ y almacenamiento de evidencias ligeras (señales y capturas como referencia opaca URI, no bytes binarios dentro de BSON), el tamaño máximo proyectado por documento es de aproximadamente $180\text{ KiB}$, lo que representa el **1.1% del límite máximo de 16 MiB de MongoDB**.
+    *   *¿Riesgo de exceder el límite BSON de 16 MiB?*
+    *Verificación inicial (supuesto histórico, supersedido):* La estimación original suponía entrada en claro ≤8 KiB y ~180 KiB/documento; ya no describe el contrato actual.
 *   *¿Sobrecosto en consultas de historial (P4) por necesitar `$unwind`?*  
     *Verificación:* Cada usuario genera a lo sumo un documento por día activo. Un usuario con un año continuo de uso acumula como máximo 365 documentos. Mediante un índice compuesto `{ userId: 1, localDate: 1 }` y paginación por cursor compuesto (keyset), el pipeline de agregación procesa un subconjunto mínimo de documentos en memoria sin escaneos masivos de colección (`COLLSCAN`).
 
@@ -63,14 +56,26 @@ Se aprueba la **Propuesta B**:
 3. Imponer índice único compuesto `{ userId: 1, localDate: 1 }` para identidad diaria e índice único multikey en `attempts.attemptId` para integridad global.
 4. Descartar contadores duplicados redundantes; el consumo se deriva directamente de la cardinalidad de `attempts.length`.
 
+## 3.1 Verificación de implementación (2026-11-03)
+
+- Bootstrap, validadores e índices ejecutados en MongoDB 8.0.34 efímero; smoke de esquema con 21 assertions aprobado.
+- Prueba de integración API↔Mongo ejecutó 20 admisiones concurrentes: exactamente cinco aceptadas y quince rechazadas por cuota, sin errores del driver; también verificó duplicado, sexto intento, colisión global de `attemptId` y lectura/actualización del intento.
+- La prueba inicial falló reproduciblemente por `$expr` en upsert. La actualización pipeline pasó en tres ejecuciones. P4/P5 `explain`, TTL eventual, backup/restore y despliegue siguen pendientes; no se afirma rendimiento productivo.
+
 ---
 
 ## 4. Consecuencias
 
 *   **Positivas:**
     *   Atomicidad garantizada sin transacciones multi-documento.
-    *   Tiempo de respuesta de admisión $O(1)$ sub-5ms.
+    *   Admisión y cuota se verifican en una sola operación atómica por documento. La latencia aún no se ha medido.
     *   Compatibilidad universal con MongoDB standalone, réplica y clusters BDaaS gestionados.
-    *   Purga automática simplificada mediante índice TTL en `purgeAt` a 365 días sobre el documento padre.
+    *   Purga automática simplificada mediante índice TTL en `purgeAt` a 366 días sobre el documento padre.
 *   **Negativas / Compromisos mitigados:**
     *   La consulta de detalle P5 o de historial P4 requiere `$unwind` o proyección posicional (`$elemMatch`), requiriendo pruebas con `explain()` y paginación por cursor keyset implementadas en el backend.
+
+## 4.1 Actualización aprobada de política de entrada (2026-11-03)
+
+El usuario aprobó conservar el contrato de entrada de hasta 64 KiB UTF-8 y cifrar cada entrada con AES-256-GCM antes de persistirla en `daily_analyses.attempts.submittedInputEncrypted`, con retención diaria aprobada de 366 días (no es política legal/productiva); los detalles de ventana personal constan en ADR-0008. El backend autentica como AAD `userId`, `localDate` y `attemptId`; nuevas escrituras no conservan `submittedInput` en claro. `ANALYSIS_INPUT_ENCRYPTION_KEY` es una clave base64url canónica de 32 bytes, externa al repo y común a réplicas. Migración forward-only 003 amplía el validador sin reescribir plaintext histórico (hasta 8 KiB), que sigue siendo legible.
+
+El ciphertext base64url puede medir hasta 87,382 caracteres por intento; cinco valores máximos suman aproximadamente 427 KiB de ciphertext, alrededor de 2.6% de BSON 16 MiB (sin contar metadatos/resultados); el total final debe mantenerse bajo el objetivo de 8 MiB por documento y seguir midiéndose. Respaldo y rotación de clave, gestor de secretos, eliminación de usuario y retención productiva quedan pendientes antes del lanzamiento.
