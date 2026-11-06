@@ -4,7 +4,7 @@
 **Spec aprobada por el usuario:** 2026-11-03, `docs/superpowers/specs/2026-11-03-enlaceseguro-mobile-client-design.md`
 **Alcance:** cliente React Native iOS/Android; no incluye consola admin, proveedores reputacionales ni recepción de enlaces compartidos.
 
-**Estado actual (2026-11-05):** la app usa Expo SDK 58 (actualizada desde SDK 57 para coincidir con el Expo Go disponible). El usuario confirmó manualmente en iPhone bienvenida, login, navegación, análisis visible en historial y retorno a login al cerrar sesión. Jest: 94 pruebas; lint y typecheck pasan. APK Android compilado, sin prueba en dispositivo. El usuario confirmó que VoiceOver anuncia el campo de enlace y los botones Analizar, Historial y Cerrar sesión; falta revisar otros estados, foco, texto y contraste. Pendientes: expiración/recuperación de sesión manual y QA visual contra Figma. Los hitos SDK 57 más abajo conservan el historial de implementación.
+**Estado actual (2026-11-05):** la app usa Expo SDK 58 (actualizada desde SDK 57 para coincidir con el Expo Go disponible). El usuario confirmó manualmente en iPhone bienvenida, login, navegación, análisis visible en historial y retorno a login al cerrar sesión y recuperación de sesión al volver a abrir. Jest: 94 pruebas; lint y typecheck pasan. El APK Android previo se compiló sin probar en dispositivo; una recompilación posterior fue interrumpida y su salida actual no está verificada. El usuario confirmó que VoiceOver anuncia el campo de enlace y los botones Analizar, Historial y Cerrar sesión; falta revisar otros estados, foco, texto y contraste. Pendientes: expiración de sesión manual y QA visual contra Figma. Los hitos SDK 57 más abajo conservan el historial de implementación.
 
 ## Base de diseño observada en Figma
 

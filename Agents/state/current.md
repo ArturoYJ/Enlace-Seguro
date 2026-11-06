@@ -3,7 +3,19 @@
 **Actualizado:** 2026-11-05
 **Estado vigente:** objetivo actualizado a demo universitaria local y gratuita en cinco días; sin PaaS, tiendas ni requisitos de escala. API, worker, MongoDB, Sandbox y consola correrán localmente. iOS se demostrará en iPhone con Expo Go; Android tendrá APK local no probado en dispositivo. ADR-0012 y `docs/roadmap/academic-demo.md` rigen esta entrega; la hoja de ruta G0–G5 queda diferida como ruta futura de producción.
 
+
+## Pausa de pruebas y limpieza — 2026-11-05
+
+- Por solicitud del usuario se interrumpió la compilación Android (exit 130) y se detuvieron Metro, API/worker, Sandbox, consola, Mongo local, `lab-gophish`, `lab-mailpit` y Docker Desktop. No se borraron volúmenes ni datos. Los puertos 3000, 3001, 5173, 8082 y 27017 quedaron sin listener.
+- Swap usado observado: ~8081 MiB antes de cancelar a ~2151 MiB después del apagado; macOS gestiona la memoria y el valor puede variar. No se forzó su vaciado.
+- El APK en el directorio de salida pudo cambiar durante la compilación interrumpida y NO está verificado. Se conserva respaldo del APK anterior en `/tmp/enlaceseguro-apk-before-lan-refresh.apk` (SHA-256 `421efcbc195bb040abae4c31330e5fb23680ffde554e4fac2e05f1c3d1a13dd1`), con IP LAN anterior; no instalar ninguno como artefacto actualizado hasta verificarlo.
+- El usuario confirmó apertura y recuperación de sesión en iPhone. Expiración real queda pendiente: el usuario respondió afirmativamente a la autorización previa pero no indicó correo, y luego pidió detener las pruebas; no se modificó ninguna sesión. Pendientes también QA visual Figma/accesibilidad restante y validación de APK para la red vigente. No reanudar pruebas o servicios hasta nueva indicación.
+
 ## Demo local — avance vigente — 2026-11-05
+
+- Cambio de red detectado: `.env.local` móvil actualizado a la IPv4 Wi-Fi vigente; API y manifest responden por LAN desde el Mac y el bundle iOS contiene la URL nueva. No se reinició Metro. El usuario confirmó que la app abre y recupera su sesión en el iPhone; la recompilación del APK para esta red fue interrumpida a petición del usuario y su salida no está verificada.
+
+- API admin local: una consulta autenticada correlacionó registro, análisis aceptado y completado por actor e intento, sin mostrar datos privados; la sesión admin temporal se cerró. No se verificó que esos eventos correspondan específicamente al iPhone ni sustituye QA visual de la consola.
 
 - Smoke local repetido: tras una espera insuficiente de 12 s en un escenario de Chromium real, el test usa un límite de observación de 35 s (pool de prueba: 20 s); sin cambiar timeouts productivos. La corrida completa posterior pasó; API typecheck y 77 pruebas unitarias también pasaron.
 
@@ -11,12 +23,12 @@
 
 - El usuario confirmó en iPhone que VoiceOver anuncia el campo de enlace y los botones Analizar, Historial y Cerrar sesión; otros estados, foco, texto y contraste siguen pendientes.
 
-- El cliente usa Expo SDK 58. El usuario confirmó en iPhone registro de cuenta exclusiva de demo, login, navegación, análisis, historial y logout; informó que la interfaz se ve igual que la simulación. Persisten QA independiente contra Figma, VoiceOver y expiración de sesión en dispositivo.
+- El cliente usa Expo SDK 58. El usuario confirmó en iPhone registro de cuenta exclusiva de demo, login, navegación, análisis, historial, logout y recuperación de sesión; informó que la interfaz se ve igual que la simulación. Persisten QA independiente contra Figma, VoiceOver y expiración de sesión en dispositivo.
 - La suite Mongo desechable pasó con una prueba adicional de paginación de auditoría HTTP, incluidos eventos con la misma fecha/hora. La consola pasó también navegación siguiente/anterior en Chromium con respuestas sintéticas; no equivale a una prueba UI con múltiples páginas reales.
 - Las cuatro fixtures locales (limpia, señal sospechosa, TLS inválido y timeout) pasaron por API/worker/Mongo/Sandbox reales en integración desechable; el timeout agotó cuatro intentos y terminó fallido sin veredicto. La excepción loopback y el deadline reducido aplican solo en el proceso de prueba.
 - Con servicios locales y cuenta admin de demo, el análisis de `https://expired.badssl.com/` terminó `inconclusive` sin objeto de veredicto. Es una comprobación puntual con URL pública, no validación de aislamiento productivo.
 - El APK documentado abajo es histórico, pertenece a SDK 57 y no tiene URL API; no representa la versión móvil actual. Regenerar solo tras estabilizar el flujo y probar conectividad HTTP Android.
-- APK ARM64 SDK58 regenerado con código actual: package `com.anonymous.enlaceseguro`, target 36, firma debug v2 verificada; bundle contiene API LAN configurada al compilar. SHA-256 `421efcbc195bb040abae4c31330e5fb23680ffde554e4fac2e05f1c3d1a13dd1`. No instalado ni probado en Android; solo ARM64. Cleartext y firma debug son exclusivamente para demo local.
+- APK anterior ARM64 SDK58: package `com.anonymous.enlaceseguro`, target 36 y firma debug v2 verificada; respaldo en `/tmp/enlaceseguro-apk-before-lan-refresh.apk`, SHA-256 `421efcbc195bb040abae4c31330e5fb23680ffde554e4fac2e05f1c3d1a13dd1`. El archivo de salida fue modificado por una compilación interrumpida y no está verificado. Ninguno se instaló ni probó en Android; el respaldo contiene la IP LAN anterior. Cleartext y firma debug son solo para demo.
 
 ## G0 — baseline histórico de producción, diferido para la entrega
 

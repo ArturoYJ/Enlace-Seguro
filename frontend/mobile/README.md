@@ -10,7 +10,7 @@ Cliente iOS/Android en React Native + Expo SDK 58, Expo Router y TypeScript. La 
    - Android Emulator: normalmente `http://10.0.2.2:3000/api/v1`.
    - Dispositivo físico: usa una dirección LAN accesible desde el teléfono y la máquina donde corre la API.
 3. Inicia API/Mongo/Sandbox conforme a sus runbooks y corre `npm run start`.
-4. Abre con Expo Go SDK 58 o un development build compatible. El usuario confirmó en iPhone el recorrido login → análisis → historial → logout. El APK Android ARM64 se compiló, pero no se instaló ni probó en dispositivo; falta QA visual y VoiceOver. Esta Mac no tiene Xcode.
+4. Abre con Expo Go SDK 58 o un development build compatible. El usuario confirmó en iPhone el recorrido login → análisis → historial → logout. Un APK Android ARM64 se compiló, pero no se instaló ni probó en dispositivo; la recompilación posterior se interrumpió y su salida actual no está verificada. Falta QA visual y accesibilidad restante. Esta Mac no tiene Xcode.
 
 No uses una URL pública de API sin TLS fuera de un entorno local controlado. No agregues `.env.local`, tokens ni URLs de usuarios al repositorio/logs.
 
