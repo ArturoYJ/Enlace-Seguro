@@ -7,6 +7,33 @@ import { test } from 'node:test';
 
 const reset = resolve('scripts/local/reset');
 
+test('reset and migrate fail closed when lsof cannot execute', () => {
+  for (const script of ['scripts/local/reset', 'scripts/local/migrate']) {
+    const result = spawnSync('bash', ['-c', `lsof(){ return 127; }; docker(){ echo DOCKER_CALLED >&2; return 1; }; export -f lsof docker; bash "$1" "${script.endsWith('reset') ? '--confirm' : ''}"`, 'test', resolve(script)], { encoding: 'utf8' });
+    assert.notEqual(result.status, 0, script);
+    assert.doesNotMatch(result.stderr, /DOCKER_CALLED/, script);
+  }
+});
+
+test('port checks block an active API and permit the no-listener branch', () => {
+  for (const script of ['scripts/local/reset', 'scripts/local/migrate']) {
+    for (const code of [0, 1]) {
+      const result = spawnSync('bash', ['-c', `lsof(){ return ${code}; }; docker(){ echo DOCKER_CALLED >&2; return 1; }; export -f lsof docker; bash "$1" "${script.endsWith('reset') ? '--confirm' : ''}"`, 'test', resolve(script)], { encoding: 'utf8' });
+      assert.notEqual(result.status, 0, script);
+      if (code === 0) assert.doesNotMatch(result.stderr, /DOCKER_CALLED/, script);
+      else assert.match(result.stderr, /DOCKER_CALLED/, script);
+    }
+  }
+});
+
+test('reset and migrate reject lsof errors even when it returns one', () => {
+  for (const script of ['scripts/local/reset', 'scripts/local/migrate']) {
+    const result = spawnSync('bash', ['-c', `lsof(){ echo 'simulated failure' >&2; return 1; }; docker(){ echo DOCKER_CALLED >&2; return 1; }; export -f lsof docker; bash "$1" "${script.endsWith('reset') ? '--confirm' : ''}"`, 'test', resolve(script)], { encoding: 'utf8' });
+    assert.notEqual(result.status, 0, script);
+    assert.doesNotMatch(result.stderr, /DOCKER_CALLED/, script);
+  }
+});
+
 function runReset(t, args, overrides = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'enlaceseguro-reset-test-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));

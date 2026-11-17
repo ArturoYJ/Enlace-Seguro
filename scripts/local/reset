@@ -7,9 +7,15 @@ fi
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 compose=(docker compose -p enlaceseguro-local -f "$root/infra/local/docker-compose.yml")
 volume='enlaceseguro-local_mongo-data'
-if lsof -nP -iTCP:3000 -sTCP:LISTEN >/dev/null 2>&1; then
+if lsof_error="$(lsof -nP -iTCP:3000 -sTCP:LISTEN 2>&1 >/dev/null)"; then
   echo 'Stop the local API and worker before resetting MongoDB.' >&2
   exit 1
+else
+  status=$?
+  if [[ $status -ne 1 || -n "$lsof_error" ]]; then
+    echo 'Cannot verify whether the API is running: lsof failed or is unavailable.' >&2
+    exit 1
+  fi
 fi
 if docker volume inspect "$volume" >/dev/null 2>&1; then
   project="$(docker volume inspect "$volume" --format '{{ index .Labels "com.docker.compose.project" }}')"
