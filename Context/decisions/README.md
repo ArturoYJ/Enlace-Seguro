@@ -13,3 +13,4 @@ Registrar aquí decisiones aprobadas con formato ADR. No convertir ideas de la p
 - [ADR-0010: Chromium user namespaces bajo seccomp en el contenedor Sandbox](ADR-0010-chromium-userns-seccomp-container.md)
 - [ADR-0011: Objetivos operativos para el piloto de EnlaceSeguro](ADR-0011-production-operating-targets.md)
 - [ADR-0012: Alcance de demostración universitaria local](ADR-0012-university-local-demo-scope.md)
+- [ADR-0013: Primera versión académica reproducible en red local](ADR-0013-academic-reproducible-first-version.md)

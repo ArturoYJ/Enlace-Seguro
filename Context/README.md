@@ -2,7 +2,7 @@
 
 Revisado el **2026-11-04** para separar la propuesta académica original del stack y la implementación presentes en el checkout. Las decisiones aprobadas sobre fechas administrativas, capacidad de jobs, estrategia E2E móvil, ventana de métricas/retención, contraste móvil y objetivos de diseño G0 se registran en ADR-0004/0005/0006/0008/0009/0011. No hay proveedor cloud seleccionado; la recomendación de AWS es candidata de evaluación, no decisión de despliegue. Para el estado vigente, iniciar en `project/overview.md`; `context.md` se conserva como traspaso histórico y no es canónico.
 
-Para la entrega universitaria vigente, ADR-0012 reemplaza el alcance productivo: demo local, gratuita y sin PaaS. Usa React Native/Fastify/MongoDB/Playwright; iOS se presenta en iPhone con Expo Go y Android se entrega como APK local sin prueba en dispositivo. El plan acotado está en `../docs/roadmap/academic-demo.md`.
+Para la primera versión académica vigente rige [ADR-0013](decisions/ADR-0013-academic-reproducible-first-version.md): servicios locales, cliente iPhone y Android, y validación instalada de ambos. ADR-0012 y `../docs/roadmap/academic-demo.md` conservan la demo histórica. No se requieren nube, tiendas ni pagos.
 
 La decisión vigente para el cliente móvil es React Native y para persistencia MongoDB 8.0.x. Flutter/PostgreSQL siguen apareciendo en la propuesta original y no describen el stack local actual.
 

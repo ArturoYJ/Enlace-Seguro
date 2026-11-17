@@ -1,5 +1,7 @@
 # Entrega académica — demo local de EnlaceSeguro
 
+> **Documento histórico:** el alcance vigente es [ADR-0013](../../Context/decisions/ADR-0013-academic-reproducible-first-version.md), que exige Android instalado y probado y un ensayo desde clon limpio. Las metas y exclusiones siguientes describen la demo anterior, no el criterio de cierre vigente. Las pruebas y los servicios requieren nueva autorización específica.
+
 **Alcance aprobado:** demo local y gratuita, cinco días, México. No requiere nube ni criterios de producción.
 
 **Pausa solicitada:** pruebas y servicios locales detenidos el 2026-11-05 para liberar memoria. La compilación Android fue interrumpida; el APK de salida actual no está verificado. El respaldo anterior conserva firma verificada, pero usa una IP LAN previa. No reanudar pruebas hasta nueva indicación.

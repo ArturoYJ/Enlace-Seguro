@@ -1,6 +1,8 @@
 # Preparación E2E móvil contra API
 
-**Estado:** estrategia aprobada; workflow, flujo E2E base y flujo de cuota implementados localmente. No hay ejecución instalada comprobada en simuladores ni corrida remota de Actions.
+**Nota de vigencia (2026-11-16):** esta página conserva evidencia histórica del 2026-11-04. El paquete móvil actual declara Expo SDK 58 y React Native 0.88; las referencias a SDK 57, requisitos de runners y herramientas locales describen aquella evaluación y requieren nueva validación antes de usarse. Las pruebas instaladas y remotas no se verificaron en la revisión documental de hoy.
+
+**Estado histórico:** estrategia aprobada; workflow, flujo E2E base y flujo de cuota implementados localmente. No hay ejecución instalada comprobada en simuladores ni corrida remota de Actions.
 
 ## Evidencia actual
 

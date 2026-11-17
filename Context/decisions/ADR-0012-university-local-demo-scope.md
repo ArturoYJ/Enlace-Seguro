@@ -1,5 +1,7 @@
 # ADR-0012: Alcance de demostración universitaria local
 
+> **Nota de vigencia:** reemplazado para la primera versión académica por [ADR-0013](ADR-0013-academic-reproducible-first-version.md). Se conserva como registro histórico de la demo anterior.
+
 - **Estado:** Aprobado
 - **Fecha:** 2026-11-04
 - **Contexto:** El alcance cloud y de resiliencia previsto para producción excede las necesidades del proyecto universitario y el plazo disponible de cinco días.
