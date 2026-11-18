@@ -13,9 +13,35 @@ export interface AuthRoutesDependencies {
   getCurrentUserUseCase: GetCurrentUserUseCase;
 }
 
+// Fastify valida estos esquemas con Ajv antes de ejecutar el manejador. Los tipos de TypeScript
+// no existen en tiempo de ejecución, así que sin esquema un objeto o arreglo JSON llega tal cual
+// a los casos de uso. Las reglas de negocio (formato de email, longitud mínima) siguen en ellos.
+const credentialsBodySchema = {
+  type: 'object',
+  properties: {
+    email: { type: 'string', maxLength: 320 },
+    password: { type: 'string', maxLength: 1024 }
+  }
+} as const;
+
+const refreshTokenBodySchema = {
+  type: 'object',
+  properties: {
+    refreshToken: { type: 'string', maxLength: 512 }
+  }
+} as const;
+
+const logoutBodySchema = {
+  type: 'object',
+  properties: {
+    refreshToken: { type: 'string', maxLength: 512 },
+    allDevices: { type: 'boolean' }
+  }
+} as const;
+
 export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRoutesDependencies): void {
   // POST /auth/register
-  fastify.post('/auth/register', async (request: FastifyRequest<{ Body: { email?: string; password?: string } }>, reply: FastifyReply) => {
+  fastify.post('/auth/register', { schema: { body: credentialsBodySchema } }, async (request: FastifyRequest<{ Body: { email?: string; password?: string } }>, reply: FastifyReply) => {
     const { email, password } = request.body || {};
     const result = await deps.registerUserUseCase.execute({
       email: email ?? '',
@@ -26,7 +52,7 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRoutesDep
   });
 
   // POST /auth/login
-  fastify.post('/auth/login', async (request: FastifyRequest<{ Body: { email?: string; password?: string } }>, reply: FastifyReply) => {
+  fastify.post('/auth/login', { schema: { body: credentialsBodySchema } }, async (request: FastifyRequest<{ Body: { email?: string; password?: string } }>, reply: FastifyReply) => {
     const { email, password } = request.body || {};
     const result = await deps.loginUserUseCase.execute({
       email: email ?? '',
@@ -38,7 +64,7 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRoutesDep
   });
 
   // POST /auth/refresh
-  fastify.post('/auth/refresh', async (request: FastifyRequest<{ Body: { refreshToken?: string } }>, reply: FastifyReply) => {
+  fastify.post('/auth/refresh', { schema: { body: refreshTokenBodySchema } }, async (request: FastifyRequest<{ Body: { refreshToken?: string } }>, reply: FastifyReply) => {
     const { refreshToken } = request.body || {};
     const result = await deps.refreshTokenUseCase.execute({
       refreshToken: refreshToken ?? '',
@@ -48,7 +74,7 @@ export function registerAuthRoutes(fastify: FastifyInstance, deps: AuthRoutesDep
   });
 
   // POST /auth/logout
-  fastify.post('/auth/logout', async (request: FastifyRequest<{ Body: { refreshToken?: string; allDevices?: boolean } }>, reply: FastifyReply) => {
+  fastify.post('/auth/logout', { schema: { body: logoutBodySchema } }, async (request: FastifyRequest<{ Body: { refreshToken?: string; allDevices?: boolean } }>, reply: FastifyReply) => {
     const { refreshToken, allDevices } = request.body || {};
     await deps.logoutUserUseCase.execute({
       refreshToken: refreshToken ?? '',
