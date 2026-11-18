@@ -19,7 +19,17 @@ export function registerAnalysisRoutes(fastify: FastifyInstance, deps: AnalysisR
   // POST /analyses
   fastify.post<{ Body: { input?: string } }>(
     '/analyses',
-    { preHandler: [fastify.authenticate] },
+    {
+      preHandler: [fastify.authenticate],
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            input: { type: 'string', maxLength: 65536 }
+          }
+        }
+      }
+    },
     async (request, reply) => {
       const { input } = request.body || {};
       const result = await deps.submitAnalysisUseCase.execute({
@@ -105,7 +115,24 @@ export function registerAnalysisRoutes(fastify: FastifyInstance, deps: AnalysisR
     Querystring: { localDate?: string };
   }>(
     '/analyses/:attemptId',
-    { preHandler: [fastify.authenticate] },
+    {
+      preHandler: [fastify.authenticate],
+      schema: {
+        params: {
+          type: 'object',
+          required: ['attemptId'],
+          properties: {
+            attemptId: { type: 'string', maxLength: 64 }
+          }
+        },
+        querystring: {
+          type: 'object',
+          properties: {
+            localDate: { type: 'string', pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' }
+          }
+        }
+      }
+    },
     async (request, reply) => {
       const { attemptId } = request.params;
       const { localDate } = request.query;

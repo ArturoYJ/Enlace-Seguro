@@ -59,10 +59,24 @@ export function buildSandboxServer(options: SandboxServerOptions): FastifyInstan
       attemptId?: string;
       url?: string;
     };
-  }>('/analyze', { preHandler: requireServiceToken, bodyLimit: MAX_ANALYSIS_BODY_BYTES }, async (request, reply) => {
+  }>('/analyze', {
+    // preValidation corre antes del esquema: sin token se responde 401 sin revelar reglas de validación.
+    preValidation: requireServiceToken,
+    bodyLimit: MAX_ANALYSIS_BODY_BYTES,
+    attachValidation: true,
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          attemptId: { type: 'string', maxLength: 36 },
+          url: { type: 'string' }
+        }
+      }
+    }
+  }, async (request, reply) => {
     const { attemptId, url } = request.body || {};
 
-    if (!isAttemptId(attemptId) || typeof url !== 'string' || url.trim().length === 0 || Buffer.byteLength(url, 'utf8') > MAX_TARGET_URL_BYTES) {
+    if (request.validationError || !isAttemptId(attemptId) || typeof url !== 'string' || url.trim().length === 0 || Buffer.byteLength(url, 'utf8') > MAX_TARGET_URL_BYTES) {
       return reply.status(400).send({
         error: 'Bad Request',
         message: 'The analysis request is invalid.'
@@ -103,10 +117,22 @@ export function buildSandboxServer(options: SandboxServerOptions): FastifyInstan
 
   server.get<{
     Params: { attemptId: string };
-  }>('/captures/:attemptId', { preHandler: requireServiceToken }, async (request, reply) => {
+  }>('/captures/:attemptId', {
+    preValidation: requireServiceToken,
+    attachValidation: true,
+    schema: {
+      params: {
+        type: 'object',
+        required: ['attemptId'],
+        properties: {
+          attemptId: { type: 'string', maxLength: 36 }
+        }
+      }
+    }
+  }, async (request, reply) => {
     reply.header('cache-control', 'private, no-store').header('x-content-type-options', 'nosniff');
     const { attemptId } = request.params;
-    if (!isAttemptId(attemptId)) {
+    if (request.validationError || !isAttemptId(attemptId)) {
       return reply.status(400).send({ error: 'Bad Request', message: 'The capture request is invalid.' });
     }
     const buffer = await options.storage.getScreenshot(attemptId);
