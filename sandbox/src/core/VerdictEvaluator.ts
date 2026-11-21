@@ -1,3 +1,5 @@
+import { analyzeUrl } from './UrlHeuristics.js';
+
 export type Verdict = 'peligroso' | 'sospechoso' | 'sin_amenazas_detectadas';
 
 export interface EvaluationInput {
@@ -39,13 +41,33 @@ export class VerdictEvaluator {
       };
     }
 
+    // Señales que salen de la URL misma (destino inicial y final), sin depender de la página.
+    const urlSignals: string[] = [];
+    const urlReasons: string[] = [];
+    for (const url of new Set([input.targetUrl, input.finalDestination])) {
+      const heuristics = analyzeUrl(url);
+      for (const [i, s] of heuristics.signals.entries()) {
+        if (!urlSignals.includes(s)) {
+          urlSignals.push(s);
+          urlReasons.push(heuristics.reasons[i] as string);
+        }
+      }
+    }
+    signals.push(...urlSignals.filter((s) => !signals.includes(s)));
+
+    // Un formulario de contraseña en un dominio con señales de engaño es el patrón típico de
+    // phishing. Antes solo se marcaba la contraseña sobre HTTP, y casi todo el phishing actual usa HTTPS.
+    if (signals.includes('password_input_present') && urlSignals.length > 0 && !signals.includes('credential_harvesting_detected')) {
+      signals.push('credential_harvesting_detected');
+    }
+
     // 2. High severity signals -> peligroso
     if (signals.includes('password_input_on_http')) {
       reasons.push('Se detectó un formulario de ingreso de contraseñas sobre una conexión no cifrada (HTTP).');
     }
 
     if (signals.includes('credential_harvesting_detected')) {
-      reasons.push('La página presenta estructura característica de suplantación de identidad (phishing).');
+      reasons.push('La página pide una contraseña en un dominio con señales de suplantación (phishing).');
     }
 
     if (signals.includes('download_attempt_blocked')) {
@@ -53,6 +75,7 @@ export class VerdictEvaluator {
     }
 
     if (reasons.length > 0) {
+      reasons.push(...urlReasons);
       return {
         verdict: 'peligroso',
         reasons: reasons.slice(0, 10),
@@ -88,9 +111,8 @@ export class VerdictEvaluator {
       reasons.push('Los formularios de la página envían datos hacia un dominio externo no coincidente.');
     }
 
-    if (signals.includes('suspicious_tld')) {
-      reasons.push('El dominio utiliza una extensión de nivel superior comúnmente asociada a campañas de abuso.');
-    }
+    // Señales de la URL (extensión de abuso, IP, punycode, marca en dominio ajeno).
+    reasons.push(...urlReasons);
 
     if (reasons.length > 0) {
       return {
