@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const net = require('node:net');
+const os = require('node:os');
 const { execFileSync } = require('node:child_process');
 const root = path.resolve(__dirname, '../..');
 const targets = ['api/.env.local', 'sandbox/.env.local', 'frontend/mobile/.env.local', 'frontend/admin-console/.env.local'];
@@ -12,10 +13,32 @@ if (existing.length) {
   console.error(`Refusing to overwrite existing local configuration: ${existing.join(', ')}`);
   process.exit(1);
 }
-let ip = process.argv[2];
+// IPv4 privada de la red local. En macOS se usa la interfaz Wi-Fi en0; en Windows y Linux se
+// revisan las interfaces y se descartan las virtuales (Docker, WSL, Hyper-V, VPN), que el teléfono no ve.
+function detectLanIp() {
+  if (process.platform === 'darwin') {
+    try { return execFileSync('ipconfig', ['getifaddr', 'en0'], { encoding: 'utf8' }).trim(); } catch { return null; }
+  }
+  const virtual = /vethernet|wsl|docker|hyper-v|virtualbox|vmware|vbox|loopback|tailscale|zerotier|vpn|br-|veth/i;
+  const isPrivate = (a) => /^10\./.test(a) || /^192\.168\./.test(a) || /^172\.(1[6-9]|2\d|3[01])\./.test(a);
+  const candidates = [];
+  for (const [name, addresses] of Object.entries(os.networkInterfaces())) {
+    if (virtual.test(name)) continue;
+    for (const a of addresses ?? []) {
+      if (a.family === 'IPv4' && !a.internal && isPrivate(a.address)) candidates.push(`${a.address} (${name})`);
+    }
+  }
+  if (candidates.length === 1) return candidates[0].split(' ')[0];
+  // Con varias, se prefiere la tarjeta inalámbrica: el teléfono se conecta por Wi-Fi.
+  const wifi = candidates.filter((c) => /\((wi-?fi|wlan|wireless|wl)/i.test(c));
+  if (wifi.length === 1) return wifi[0].split(' ')[0];
+  if (candidates.length > 1) console.error(`Several network addresses found: ${candidates.join(', ')}.`);
+  return null;
+}
+let ip = process.argv[2] || detectLanIp();
 if (!ip) {
-  try { ip = execFileSync('ipconfig', ['getifaddr', 'en0'], { encoding: 'utf8' }).trim(); }
-  catch { console.error('Cannot determine Wi-Fi address. Supply the Mac LAN IPv4 address as an argument.'); process.exit(1); }
+  console.error('Cannot determine the Wi-Fi address. Supply the computer LAN IPv4 address as an argument, e.g. scripts/local/configure 192.168.1.50');
+  process.exit(1);
 }
 if (net.isIP(ip) !== 4 || ip.startsWith('127.') || ip === '0.0.0.0') {
   console.error('Provide a non-loopback IPv4 address for the local network.'); process.exit(1);
@@ -36,6 +59,17 @@ for (const [key, value] of Object.entries({
 })) api = replace(api, key, value);
 let sandbox = fs.readFileSync(path.join(root, 'sandbox/.env.example'), 'utf8');
 sandbox = replace(replace(sandbox, 'SANDBOX_SERVICE_TOKEN', shared), 'HOST', '127.0.0.1');
+// El ejemplo trae la ruta de Chrome en macOS. En otros sistemas se busca Chrome instalado; si no
+// aparece, se deja vacío y el Sandbox usa el Chromium de Playwright (npx playwright install chromium).
+if (process.platform !== 'darwin') {
+  const chromeCandidates = process.platform === 'win32'
+    ? [process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA]
+        .filter(Boolean).map((base) => path.join(base, 'Google', 'Chrome', 'Application', 'chrome.exe'))
+    : ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
+  const chrome = chromeCandidates.find((file) => fs.existsSync(file));
+  sandbox = replace(sandbox, 'CHROME_EXECUTABLE_PATH', chrome ? chrome.split(path.sep).join('/') : '');
+  if (!chrome) console.log('Google Chrome not found: run "cd sandbox && npx playwright install chromium" before starting the Sandbox.');
+}
 const files = [api, sandbox, `EXPO_PUBLIC_API_URL=http://${ip}:3000/api/v1\n`, 'VITE_API_BASE_URL=http://localhost:3000/api/v1\n'];
 for (let i = 0; i < targets.length; i++) fs.writeFileSync(path.join(root, targets[i]), files[i], { flag: 'wx', mode: 0o600 });
 console.log(`Local configuration created. Mobile API: http://${ip}:3000/api/v1`);

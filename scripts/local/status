@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/_platform.sh"
 docker compose -f "$root/infra/local/docker-compose.yml" ps

@@ -5,18 +5,10 @@ if [[ $# -ne 1 || "$1" != '--confirm' ]]; then
   exit 2
 fi
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/_platform.sh"
 compose=(docker compose -p enlaceseguro-local -f "$root/infra/local/docker-compose.yml")
 volume='enlaceseguro-local_mongo-data'
-if lsof_error="$(lsof -nP -iTCP:3000 -sTCP:LISTEN 2>&1 >/dev/null)"; then
-  echo 'Stop the local API and worker before resetting MongoDB.' >&2
-  exit 1
-else
-  status=$?
-  if [[ $status -ne 1 || -n "$lsof_error" ]]; then
-    echo 'Cannot verify whether the API is running: lsof failed or is unavailable.' >&2
-    exit 1
-  fi
-fi
+require_api_stopped 'resetting MongoDB'
 if docker volume inspect "$volume" >/dev/null 2>&1; then
   project="$(docker volume inspect "$volume" --format '{{ index .Labels "com.docker.compose.project" }}')"
   [[ "$project" == 'enlaceseguro-local' ]] || { echo 'Volume project label mismatch; refusing reset.' >&2; exit 1; }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/_platform.sh"
 # Compose down does not remove the named data volume without -v.
 docker compose -f "$root/infra/local/docker-compose.yml" down
 echo 'Local MongoDB stopped; data volume preserved.'

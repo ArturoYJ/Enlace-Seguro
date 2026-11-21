@@ -12,7 +12,22 @@ La app móvil se comunica con una API y su worker; estos usan MongoDB y un Sandb
 - Terminales disponibles para los servicios. La computadora debe permanecer encendida mientras uses la app.
 - `lsof` disponible en la terminal. `migrate` y `reset` lo usan para comprobar si la API escucha en el puerto 3000; si no está instalado, esa comprobación no es fiable. Compruébalo con `command -v lsof` y, si no aparece una ruta, detente antes de ejecutar esos scripts.
 
-El procedimiento se documentó y probó previamente en macOS; Windows y Linux **no están verificados**. `configure` detecta automáticamente la IP Wi-Fi con un comando de macOS, pero también acepta una IPv4 LAN proporcionada manualmente. La ruta de Chrome del ejemplo es específica de macOS y los scripts usan Bash, `lsof` y herramientas Unix; proporcionar una IP manual no demuestra compatibilidad con otro sistema. La compatibilidad de Chrome, Bash y demás requisitos en otros sistemas requiere validación.
+El procedimiento se documentó y probó previamente en macOS. Windows con Git Bash tiene ajustes en los scripts (ver abajo) pero falta el recorrido completo en un equipo; Linux **no está verificado**. `configure` detecta automáticamente la IP Wi-Fi con un comando de macOS, pero también acepta una IPv4 LAN proporcionada manualmente. La ruta de Chrome del ejemplo es específica de macOS y los scripts usan Bash, `lsof` y herramientas Unix; proporcionar una IP manual no demuestra compatibilidad con otro sistema. La compatibilidad de Chrome, Bash y demás requisitos en otros sistemas requiere validación.
+
+### En Windows
+
+Usa **Git Bash** (viene con Git for Windows), no PowerShell ni CMD: los scripts de `scripts/local` son de Bash. Al clonar, desactiva la conversión de saltos de línea para que los scripts no se rompan:
+
+```sh
+git clone -c core.autocrlf=false https://github.com/ArturoYJ/Enlace-Seguro.git
+```
+
+Diferencias con macOS:
+
+- `configure` busca la IP de la red local entre las interfaces y descarta las virtuales (Docker, WSL, Hyper-V). Si encuentra varias o ninguna, pásala a mano: `scripts/local/configure 192.168.1.50`. La puedes ver con `ipconfig` en el adaptador Wi-Fi.
+- El Sandbox usa Google Chrome si está instalado en la ruta normal. Si no lo encuentra, `configure` lo avisa; en ese caso corre `cd sandbox && npx playwright install chromium`.
+- `migrate` y `reset` comprueban que la API esté detenida con una conexión al puerto 3000 hecha con Node, porque Git Bash no trae `lsof`.
+- La primera vez que arranques la API, Windows preguntará si permite a Node.js en la red. Permite solo **redes privadas**; sin eso el teléfono no llega al puerto 3000.
 
 > **Seguridad:** la API usa HTTP en la red local: contraseñas y URLs viajan sin cifrar. Usa solo una red de confianza y cuentas y contraseñas exclusivas para pruebas. No introduzcas datos personales, tokens ni enlaces secretos. El Sandbox local no tiene aislamiento de red productivo verificado; analiza solo páginas públicas conocidas y no lo expongas a otros equipos.
 
