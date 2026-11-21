@@ -2,6 +2,7 @@ import { ClaimedAnalysisJob, IDailyAnalysisRepository } from '../../core/ports/I
 import { ISecurityAuditRepository } from '../../core/ports/ISecurityAuditRepository.js';
 import { ISandboxService } from '../../core/ports/ISandboxService.js';
 import { AnalysisPayload } from '../../core/entities/Analysis.js';
+import { IReputationService } from '../../core/ports/IReputationService.js';
 import { SandboxServiceError } from '../../core/errors/DomainErrors.js';
 
 export class ProcessAnalysisJobUseCase {
@@ -9,7 +10,8 @@ export class ProcessAnalysisJobUseCase {
     private readonly dailyAnalysisRepository: IDailyAnalysisRepository,
     private readonly securityAuditRepository: ISecurityAuditRepository,
     private readonly sandboxService: ISandboxService,
-    private readonly maxAttempts = 4
+    private readonly maxAttempts = 4,
+    private readonly reputationService?: IReputationService
   ) {}
 
   public async execute(job: ClaimedAnalysisJob): Promise<void> {
@@ -69,6 +71,28 @@ export class ProcessAnalysisJobUseCase {
         redirects: result.redirects.slice(0, 10),
         screenshotRef: result.screenshotRef
       };
+
+      // 3b. Reputación externa: se consultan el enlace original y el destino final.
+      // Si la fuente lo tiene listado, el veredicto pasa a peligroso aunque la página
+      // no haya mostrado señales en el sandbox. Si la fuente falla, se conserva el veredicto.
+      if (this.reputationService) {
+        const reputation = await this.reputationService.check([job.targetUrl, result.finalDestination]);
+        if (reputation.status === 'unavailable') {
+          analysis.sourceFailures = [reputation.failure];
+        } else {
+          analysis.sourceResults = [...analysis.sourceResults, reputation.sourceResult].slice(-4);
+          if (reputation.status === 'listed') {
+            analysis.verdict = 'peligroso';
+            analysis.reasons = [
+              reputation.sourceResult.summary ?? 'Una fuente de reputación externa tiene este enlace registrado como amenaza.',
+              ...analysis.reasons.filter((r) => !r.includes('no constituye garantía'))
+            ].slice(0, 10);
+            if (!analysis.signals.includes('reputation_listed')) {
+              analysis.signals = [...analysis.signals, 'reputation_listed'].slice(0, 50);
+            }
+          }
+        }
+      }
 
       const now = new Date();
 

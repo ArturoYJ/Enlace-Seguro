@@ -22,6 +22,7 @@ import { GetAnalysisDetailUseCase } from './use-cases/analysis/GetAnalysisDetail
 import { GetAnalysisCaptureUseCase } from './use-cases/analysis/GetAnalysisCaptureUseCase.js';
 import { GetAnalysisSummaryUseCase } from './use-cases/analysis/GetAnalysisSummaryUseCase.js';
 import { ProcessAnalysisJobUseCase } from './use-cases/analysis/ProcessAnalysisJobUseCase.js';
+import { GoogleSafeBrowsingService } from './infrastructure/reputation/GoogleSafeBrowsingService.js';
 import { ListAuditEventsUseCase } from './use-cases/admin/ListAuditEventsUseCase.js';
 import { GetMetricsUseCase } from './use-cases/admin/GetMetricsUseCase.js';
 import { buildServer } from './presentation/server.js';
@@ -151,11 +152,18 @@ async function bootstrap() {
   const listAnalysesUseCase = new ListAnalysesUseCase(dailyAnalysisRepository);
   const getAnalysisSummaryUseCase = new GetAnalysisSummaryUseCase(dailyAnalysisRepository);
   const getAnalysisDetailUseCase = new GetAnalysisDetailUseCase(dailyAnalysisRepository);
+  // Opcional: sin clave, el análisis usa solo el sandbox.
+  const safeBrowsingApiKey = process.env['GOOGLE_SAFE_BROWSING_API_KEY']?.trim();
+  const reputationService = safeBrowsingApiKey
+    ? new GoogleSafeBrowsingService({ apiKey: safeBrowsingApiKey, timeoutMs: Number(process.env['GOOGLE_SAFE_BROWSING_TIMEOUT_MS'] ?? 5000) })
+    : undefined;
+  console.log(`[INFO] Google Safe Browsing: ${reputationService ? 'activado' : 'desactivado (sin GOOGLE_SAFE_BROWSING_API_KEY)'}`);
   const processAnalysisJobUseCase = new ProcessAnalysisJobUseCase(
     dailyAnalysisRepository,
     securityAuditRepository,
     sandboxService,
-    analysisJobMaxAttempts
+    analysisJobMaxAttempts,
+    reputationService
   );
   const analysisJobWorker = new AnalysisJobWorker(dailyAnalysisRepository, processAnalysisJobUseCase, {
     concurrency: analysisJobConcurrency,
