@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { ProcessAnalysisJobUseCase } from '../../../src/use-cases/analysis/ProcessAnalysisJobUseCase.js';
 import { SandboxServiceError } from '../../../src/core/errors/DomainErrors.js';
+import { VirusTotalReputationProvider } from '../../../src/infrastructure/reputation/VirusTotalReputationProvider.js';
 import { MockDailyAnalysisRepository, MockSecurityAuditRepository } from '../../mocks/MockRepositories.js';
 
 const attempt = (attemptId: string) => ({
@@ -15,6 +16,74 @@ const attempt = (attemptId: string) => ({
 });
 
 describe('ProcessAnalysisJobUseCase', () => {
+  it('connects a simulated VirusTotal report through the worker to persisted analysis', async () => {
+    const daily = new MockDailyAnalysisRepository(); const audit = new MockSecurityAuditRepository();
+    const target = 'https://example.test/path';
+    const sandbox = { analyze: async (attemptId: string) => ({ outcome: 'completed' as const, attemptId,
+      targetUrl: target, finalDestination: target, redirects: [], signals: [],
+      verdict: 'sin_amenazas_detectadas' as const, reasons: [], sourceResults: [] }), isHealthy: async () => true };
+    const now = new Date(); let calls = 0;
+    const reputation = new VirusTotalReputationProvider('test-key', new Set([target]),
+      { reserve: async () => true, cooldown: async () => undefined }, async () => {
+        calls++;
+        return new Response(JSON.stringify({ data: { attributes: { last_analysis_stats: { malicious: 1 },
+          last_analysis_date: Math.floor(now.getTime() / 1000) } } }));
+      }, () => now);
+    await daily.admitAttemptAtomic('user-1', '2026-11-03', { ...attempt('attempt-vt-flow'), submittedInput: target });
+    const claimed = await daily.claimNextAnalysisJob('worker', new Date(), 60_000); assert.ok(claimed);
+    await new ProcessAnalysisJobUseCase(daily, audit, sandbox, 4, reputation).execute(claimed);
+    const analysis = (await daily.findAttemptByLocalKey('user-1', '2026-11-03', 'attempt-vt-flow'))?.attempt.analysis;
+    assert.equal(calls, 1); assert.equal(analysis?.verdict, 'sospechoso');
+    assert.equal(analysis?.sourceResults[0]?.sourceName, 'VirusTotal');
+  });
+  it('combines a VirusTotal match without reducing a Sandbox verdict', async () => {
+    for (const initial of ['sin_amenazas_detectadas', 'sospechoso', 'peligroso'] as const) {
+      const daily = new MockDailyAnalysisRepository();
+      const audit = new MockSecurityAuditRepository();
+      const sandbox = { analyze: async (attemptId: string) => ({ outcome: 'completed' as const, attemptId,
+        targetUrl: 'https://example.test/', finalDestination: 'https://example.test/', redirects: [], signals: [],
+        verdict: initial, reasons: [], sourceResults: [] }), isHealthy: async () => true };
+      const provider = { check: async () => ({ status: 'match' as const, malicious: 2,
+        checkedAt: new Date(), reportAt: new Date('2026-01-01T00:00:00Z') }) };
+      await daily.admitAttemptAtomic('user-1', '2026-11-03', attempt('attempt-vt'));
+      const claimed = await daily.claimNextAnalysisJob('worker', new Date(), 60_000);
+      assert.ok(claimed);
+      await new ProcessAnalysisJobUseCase(daily, audit, sandbox, 4, provider).execute(claimed);
+      const analysis = (await daily.findAttemptByLocalKey('user-1', '2026-11-03', 'attempt-vt'))?.attempt.analysis;
+      assert.equal(analysis?.verdict, initial === 'sin_amenazas_detectadas' ? 'sospechoso' : initial);
+      assert.equal(analysis?.sourceResults[0]?.status, 'match');
+    }
+  });
+
+  it('records unavailable VirusTotal without reporting a match or changing the Sandbox verdict', async () => {
+    for (const status of ['not_queried', 'not_found', 'rate_limited', 'error'] as const) {
+      const daily = new MockDailyAnalysisRepository(); const audit = new MockSecurityAuditRepository();
+      const sandbox = { analyze: async (attemptId: string) => ({ outcome: 'completed' as const, attemptId,
+        targetUrl: 'https://example.test/', finalDestination: 'https://example.test/', redirects: [], signals: [],
+        verdict: 'sin_amenazas_detectadas' as const, reasons: [], sourceResults: [] }), isHealthy: async () => true };
+      await daily.admitAttemptAtomic('user-1', '2026-11-03', attempt('attempt-vt'));
+      const claimed = await daily.claimNextAnalysisJob('worker', new Date(), 60_000); assert.ok(claimed);
+      await new ProcessAnalysisJobUseCase(daily, audit, sandbox, 4, { check: async () => ({ status }) }).execute(claimed);
+      const analysis = (await daily.findAttemptByLocalKey('user-1', '2026-11-03', 'attempt-vt'))?.attempt.analysis;
+      assert.equal(analysis?.verdict, 'sin_amenazas_detectadas');
+      assert.equal(analysis?.sourceFailures[0]?.reasonCode, status);
+    }
+  });
+
+  it('retains a dangerous Sandbox verdict when VirusTotal has no detections', async () => {
+    const daily = new MockDailyAnalysisRepository(); const audit = new MockSecurityAuditRepository();
+    const sandbox = { analyze: async (attemptId: string) => ({ outcome: 'completed' as const, attemptId,
+      targetUrl: 'https://example.test/', finalDestination: 'https://example.test/', redirects: [], signals: [],
+      verdict: 'peligroso' as const, reasons: [], sourceResults: [] }), isHealthy: async () => true };
+    await daily.admitAttemptAtomic('user-1', '2026-11-03', attempt('attempt-vt'));
+    const claimed = await daily.claimNextAnalysisJob('worker', new Date(), 60_000); assert.ok(claimed);
+    await new ProcessAnalysisJobUseCase(daily, audit, sandbox, 4, { check: async () => ({
+      status: 'no_match', malicious: 0, checkedAt: new Date(), reportAt: new Date()
+    }) }).execute(claimed);
+    const analysis = (await daily.findAttemptByLocalKey('user-1', '2026-11-03', 'attempt-vt'))?.attempt.analysis;
+    assert.equal(analysis?.verdict, 'peligroso');
+    assert.equal(analysis?.sourceResults[0]?.status, 'no_match');
+  });
   it('records only stable error codes after a terminal failure', async () => {
     const dailyRepository = new MockDailyAnalysisRepository();
     const auditRepository = new MockSecurityAuditRepository();

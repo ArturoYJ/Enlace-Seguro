@@ -576,7 +576,8 @@ describe('analysis URL flow', () => {
     expect(await screen.findByText('Peligroso')).toBeTruthy();
     expect(screen.getByText('phishing.example')).toBeTruthy();
     expect(screen.getByText(/formulario de acceso sospechoso/)).toBeTruthy();
-    expect(screen.queryByText(/private|login_form_detected|Google Safe Browsing|VirusTotal/)).toBeNull();
+    expect(screen.queryByText(/private|login_form_detected|Google Safe Browsing/)).toBeNull();
+    expect(screen.getByText('No hay información disponible sobre esta fuente.')).toBeTruthy();
     expect(screen.getByText('Analizar otro enlace')).toBeTruthy();
     expect(screen.getByText('Ver en historial')).toBeTruthy();
     expect(screen.queryByText('Captura')).toBeNull();

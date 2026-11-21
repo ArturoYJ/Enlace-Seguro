@@ -10,6 +10,64 @@ const result = (attemptId: string, targetUrl: string): SandboxExecutionResult =>
 });
 
 describe('PlaywrightContextPool job safeguards', () => {
+  it('counts only main-frame navigation redirects and retains repeated locations', async () => {
+    const original = AntiSsrfGuard.validateDestination;
+    AntiSsrfGuard.validateDestination = async () => ({ safe: true });
+    const pool = new PlaywrightContextPool({} as IScreenshotStorage);
+    const mainFrame = {};
+    let responseHandler: (response: unknown) => void = () => undefined;
+    const response = (navigation: boolean, frame: unknown, location: string) => ({
+      status: () => 302, headers: () => ({ location }),
+      request: () => ({ isNavigationRequest: () => navigation, frame: () => frame })
+    });
+    const page = { on: (event: string, callback: (response: unknown) => void) => { if (event === 'response') responseHandler = callback; },
+      mainFrame: () => mainFrame,
+      goto: async () => { responseHandler(response(false, mainFrame, '/asset'));
+        responseHandler(response(true, {}, '/iframe')); responseHandler(response(true, mainFrame, '/next'));
+        responseHandler(response(true, mainFrame, '/next')); },
+      url: () => 'https://example.test/next', evaluate: async () => [], screenshot: async () => { throw new Error('unavailable'); } };
+    const context = { route: async () => undefined, routeWebSocket: async () => undefined, newPage: async () => page, close: async () => undefined };
+    const internal = pool as unknown as { browser: unknown; init: () => Promise<void> };
+    internal.browser = { newContext: async () => context };
+    internal.init = async () => undefined;
+    try {
+      const output = await pool.analyzeUrl('55555555-5555-4555-8555-555555555555', 'https://example.test');
+      assert.deepEqual(output.redirects, ['/next', '/next']);
+      assert.equal(output.outcome, 'completed');
+    } finally { AntiSsrfGuard.validateDestination = original; }
+  });
+  it('does not issue a clean verdict or save a capture when DOM inspection fails', async () => {
+    const original = AntiSsrfGuard.validateDestination;
+    AntiSsrfGuard.validateDestination = async () => ({ safe: true });
+    let captures = 0;
+    const pool = new PlaywrightContextPool({ saveScreenshot: async () => { captures++; return 'capture'; } } as unknown as IScreenshotStorage);
+    const page = { on: () => undefined, goto: async () => undefined, url: () => 'https://example.test',
+      evaluate: async () => { throw new Error('closed'); }, screenshot: async () => Buffer.from('x') };
+    const context = { route: async () => undefined, routeWebSocket: async () => undefined,
+      newPage: async () => page, close: async () => undefined };
+    const internal = pool as unknown as { browser: unknown; init: () => Promise<void> };
+    internal.browser = { newContext: async () => context };
+    internal.init = async () => undefined;
+    try {
+      const output = await pool.analyzeUrl('44444444-4444-4444-8444-444444444444', 'https://example.test');
+      assert.equal(output.outcome, 'inconclusive');
+      if (output.outcome === 'inconclusive') assert.equal(output.reasonCode, 'dom_inspection_failed');
+      assert.equal('verdict' in output, false);
+      assert.equal(captures, 0);
+    } finally { AntiSsrfGuard.validateDestination = original; }
+  });
+  it('returns inconclusive for DNS failure without opening a browser or reporting danger', async () => {
+    const original = AntiSsrfGuard.validateDestination;
+    AntiSsrfGuard.validateDestination = async () => ({ safe: false, reasonCode: 'dns_unavailable' });
+    try {
+      const pool = new PlaywrightContextPool({} as IScreenshotStorage);
+      const output = await pool.analyzeUrl('33333333-3333-4333-8333-333333333333', 'https://example.test');
+      assert.equal(output.outcome, 'inconclusive');
+      if (output.outcome === 'inconclusive') assert.equal(output.reasonCode, 'dns_unavailable');
+      assert.equal('verdict' in output, false);
+      assert.equal('screenshotRef' in output, false);
+    } finally { AntiSsrfGuard.validateDestination = original; }
+  });
   it('deduplicates active/completed calls by attemptId and rejects a changed payload', async () => {
     const storage = {} as IScreenshotStorage;
     const pool = new PlaywrightContextPool(storage, 1, undefined, 1);

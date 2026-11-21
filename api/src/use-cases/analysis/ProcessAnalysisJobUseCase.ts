@@ -3,13 +3,15 @@ import { ISecurityAuditRepository } from '../../core/ports/ISecurityAuditReposit
 import { ISandboxService } from '../../core/ports/ISandboxService.js';
 import { AnalysisPayload } from '../../core/entities/Analysis.js';
 import { SandboxServiceError } from '../../core/errors/DomainErrors.js';
+import type { IReputationProvider, ReputationResult } from '../../core/ports/IReputationProvider.js';
 
 export class ProcessAnalysisJobUseCase {
   constructor(
     private readonly dailyAnalysisRepository: IDailyAnalysisRepository,
     private readonly securityAuditRepository: ISecurityAuditRepository,
     private readonly sandboxService: ISandboxService,
-    private readonly maxAttempts = 4
+    private readonly maxAttempts = 4,
+    private readonly reputation?: IReputationProvider
   ) {}
 
   public async execute(job: ClaimedAnalysisJob): Promise<void> {
@@ -58,13 +60,30 @@ export class ProcessAnalysisJobUseCase {
         return;
       }
 
+      let reputation: ReputationResult = { status: 'not_queried' };
+      if (this.reputation) {
+        try { reputation = await this.reputation.check(job.targetUrl); }
+        catch { reputation = { status: 'error' }; }
+      }
+      if (result.sourceResults.length > 3) throw new Error('Sandbox source capacity exceeded.');
+      const hasReport = reputation.status === 'match' || reputation.status === 'no_match';
+      const verdict = reputation.status === 'match' && result.verdict === 'sin_amenazas_detectadas'
+        ? 'sospechoso' : result.verdict;
+      const reasons = reputation.status === 'match'
+        ? [`VirusTotal reportó ${reputation.malicious} detección(es) maliciosa(s); el resultado requiere revisión.`, ...result.reasons].slice(0, 10)
+        : result.reasons.slice(0, 10);
+
       // 3. Format structured AnalysisPayload
       const analysis: AnalysisPayload = {
-        verdict: result.verdict,
-        reasons: result.reasons.slice(0, 10),
+        verdict,
+        reasons,
         finalDestination: result.finalDestination.slice(0, 8192),
-        sourceResults: result.sourceResults.slice(0, 4),
-        sourceFailures: [],
+        sourceResults: (reputation.status === 'match' || reputation.status === 'no_match') ? [...result.sourceResults, {
+          sourceName: 'VirusTotal', status: reputation.status, checkedAt: reputation.checkedAt,
+          expiresAt: new Date(reputation.reportAt.getTime() + 24 * 60 * 60 * 1000), resultCode: reputation.status,
+          summary: `Informe del ${reputation.reportAt.toISOString()}; detecciones maliciosas: ${reputation.malicious}.`
+        }] : result.sourceResults,
+        sourceFailures: hasReport ? [] : [{ sourceName: 'VirusTotal', reasonCode: reputation.status }],
         signals: result.signals.slice(0, 50),
         redirects: result.redirects.slice(0, 10),
         screenshotRef: result.screenshotRef

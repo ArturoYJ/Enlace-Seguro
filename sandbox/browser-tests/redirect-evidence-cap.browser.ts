@@ -18,8 +18,8 @@ after(async () => {
   await new Promise<void>((resolve) => server?.close(() => resolve()) ?? resolve());
 });
 
-describe('Sandbox redirect evidence bound (real Chromium, loopback fixture only)', () => {
-  it('retains at most ten redirect locations and marks the evidence as truncated', async () => {
+describe('Sandbox redirect evidence excludes subframes (real Chromium, loopback fixture only)', () => {
+  it('does not count iframe redirects as main-document navigation', async () => {
     let redirectsServed = 0;
     let destinationsServed = 0;
     let allFixtureRequestsCompleted = false;
@@ -92,9 +92,9 @@ describe('Sandbox redirect evidence bound (real Chromium, loopback fixture only)
       assert.equal(result.outcome, 'completed');
       if (result.outcome !== 'completed') return;
       assert.equal(allFixtureRequestsCompleted, true);
-      assert.equal(result.redirects.length, 10);
-      assert.equal(result.signals.includes('excessive_redirect_chain'), true);
-      assert.equal(result.signals.includes('redirect_evidence_truncated'), true);
+      assert.equal(result.redirects.length, 0);
+      assert.equal(result.signals.includes('excessive_redirect_chain'), false);
+      assert.equal(result.signals.includes('redirect_evidence_truncated'), false);
       assert.equal(redirectsServed, requestCount);
       assert.equal(destinationsServed, requestCount);
     } finally {

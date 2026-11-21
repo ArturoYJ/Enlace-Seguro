@@ -25,7 +25,7 @@ interface SandboxExecutionCommon {
 
 export type SandboxExecutionResult = SandboxExecutionCommon & (
   | { outcome: 'completed'; verdict: Verdict; reasons: string[]; screenshotRef?: string }
-  | { outcome: 'inconclusive'; reasonCode: 'tls_certificate_invalid' | 'resource_limit_exceeded' }
+  | { outcome: 'inconclusive'; reasonCode: 'tls_certificate_invalid' | 'resource_limit_exceeded' | 'dns_unavailable' | 'dom_inspection_failed' }
 );
 
 export class SandboxCapacityError extends Error {
@@ -244,6 +244,10 @@ export class PlaywrightContextPool {
 
     // 2. DNS Destination Preflight
     const dnsCheck = await awaitBeforeDeadline(AntiSsrfGuard.validateDestination(preflight.parsedUrl), signal);
+    if (!dnsCheck.safe && dnsCheck.reasonCode === 'dns_unavailable') {
+      return { outcome: 'inconclusive', reasonCode: 'dns_unavailable', attemptId, targetUrl,
+        finalDestination: targetUrl, redirects: [], signals: ['dns_unavailable'], sourceResults: [] };
+    }
     if (!dnsCheck.safe) {
       const evaluation = VerdictEvaluator.evaluate({
         targetUrl,
@@ -288,6 +292,8 @@ export class PlaywrightContextPool {
     let tlsCertificateInvalid = false;
     let egressProxyError = false;
     let resourceLimitExceeded = false;
+    let dnsUnavailable = false;
+    let domInspectionFailed = false;
     let browserRequestCount = 0;
     let ssrfInFlightReason: string | undefined = undefined;
     const registerBrowserRequest = (): boolean => {
@@ -344,6 +350,11 @@ export class PlaywrightContextPool {
           throw error;
         }
         if (!destCheck.safe) {
+          if (destCheck.reasonCode === 'dns_unavailable') {
+            dnsUnavailable = true;
+            await route.abort('blockedbyclient');
+            return;
+          }
           ssrfDetectedInFlight = true;
           ssrfInFlightReason = destCheck.reason;
           await route.abort('blockedbyclient');
@@ -397,9 +408,10 @@ export class PlaywrightContextPool {
           void closeContext();
         }
         const status = response.status();
-        if ([301, 302, 303, 307, 308].includes(status)) {
+        const request = response.request();
+        if ([301, 302, 303, 307, 308].includes(status) && request.isNavigationRequest() && request.frame() === page.mainFrame()) {
           const location = response.headers()['location'];
-          if (location && !redirects.includes(location)) {
+          if (location) {
             if (redirects.length < MAX_RECORDED_REDIRECT_LOCATIONS) {
               redirects.push(location);
             } else if (!signals.includes('redirect_evidence_truncated')) {
@@ -419,7 +431,7 @@ export class PlaywrightContextPool {
       } catch (err: unknown) {
         if (egressProxyError) throw new SandboxNavigationError();
         if (signal.aborted) throw timeoutError(signal);
-        if (!resourceLimitExceeded) {
+        if (!resourceLimitExceeded && !dnsUnavailable) {
           if (isTlsCertificateValidationError(err)) {
             tlsCertificateInvalid = true;
           } else {
@@ -438,7 +450,7 @@ export class PlaywrightContextPool {
       if (egressProxyError) throw new SandboxNavigationError();
 
       // DOM Signals Inspection
-      if (!ssrfDetectedInFlight && !tlsCertificateInvalid && !resourceLimitExceeded) {
+      if (!ssrfDetectedInFlight && !tlsCertificateInvalid && !resourceLimitExceeded && !dnsUnavailable) {
         try {
           const domSignals = await awaitBeforeDeadline(page.evaluate(() => {
             const detected: string[] = [];
@@ -492,11 +504,12 @@ export class PlaywrightContextPool {
           signals.push(...domSignals);
         } catch (error: unknown) {
           if (signal.aborted) throw timeoutError(signal);
-          // Page may have closed or crashed
+          domInspectionFailed = true;
         }
 
         // Capture Screenshot
         try {
+          if (domInspectionFailed) throw new Error('DOM inspection failed');
           screenshotBuffer = await awaitBeforeDeadline(page.screenshot({
             type: 'webp',
             fullPage: false
@@ -523,6 +536,11 @@ export class PlaywrightContextPool {
         signals: ['browser_request_limit_exceeded'],
         sourceResults: []
       };
+    }
+    if (dnsUnavailable || domInspectionFailed) {
+      const reasonCode = dnsUnavailable ? 'dns_unavailable' : 'dom_inspection_failed';
+      return { outcome: 'inconclusive', reasonCode, attemptId, targetUrl, finalDestination: targetUrl,
+        redirects: [], signals: [reasonCode], sourceResults: [] };
     }
     if (tlsCertificateInvalid) {
       return {
