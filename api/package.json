@@ -22,7 +22,7 @@
     "url-analyzer"
   ],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "@fastify/cors": "^10.0.2",
     "@fastify/sensible": "^6.0.3",

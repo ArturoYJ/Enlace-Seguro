@@ -3,6 +3,16 @@ import assert from 'node:assert/strict';
 import { AntiSsrfGuard } from '../src/core/AntiSsrfGuard.js';
 
 describe('AntiSsrfGuard', () => {
+  it('distinguishes unavailable DNS from a private address', async () => {
+    const url = new URL('https://example.test');
+    const absent = await AntiSsrfGuard.validateDestination(url, async () => []);
+    const failed = await AntiSsrfGuard.validateDestination(url, async () => { throw new Error('unavailable'); });
+    const privateAddress = await AntiSsrfGuard.validateDestination(url, async () => [{ address: '127.0.0.1', family: 4 }]);
+    assert.equal(absent.reasonCode, 'dns_unavailable');
+    assert.equal(failed.reasonCode, 'dns_unavailable');
+    assert.equal(privateAddress.safe, false);
+    assert.equal(privateAddress.reasonCode, undefined);
+  });
   describe('Protocol and Hostname Scheme Validation', () => {
     it('should accept valid public http and https URLs', () => {
       const httpRes = AntiSsrfGuard.isSafeUrl('http://example.com/login');

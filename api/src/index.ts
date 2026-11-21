@@ -10,6 +10,8 @@ import { KeyedLoginRateLimiter } from './infrastructure/security/KeyedLoginRateL
 import { AesGcmAnalysisInputCipher } from './infrastructure/security/AesGcmAnalysisInputCipher.js';
 import { MongoLoginRateLimitRepository } from './infrastructure/database/mongo/MongoLoginRateLimitRepository.js';
 import { HttpSandboxService, resolveSandboxServiceUrl } from './infrastructure/sandbox/HttpSandboxService.js';
+import { MongoReputationQuota } from './infrastructure/reputation/MongoReputationQuota.js';
+import { VirusTotalReputationProvider } from './infrastructure/reputation/VirusTotalReputationProvider.js';
 import { AnalysisJobWorker } from './infrastructure/workers/AnalysisJobWorker.js';
 import { RegisterUserUseCase } from './use-cases/auth/RegisterUserUseCase.js';
 import { LoginUserUseCase } from './use-cases/auth/LoginUserUseCase.js';
@@ -105,6 +107,20 @@ async function bootstrap() {
   const tokenService = new JwtTokenService(jwtSecret, jwtExpiresIn);
   const sandboxAnalysisTimeoutMs = Number(process.env['SANDBOX_ANALYSIS_TIMEOUT_MS'] ?? 30_000);
   const sandboxService = new HttpSandboxService(sandboxUrl, sandboxServiceToken, sandboxAnalysisTimeoutMs);
+  const vtEnabled = process.env['VIRUSTOTAL_ENABLED'] ?? 'false';
+  if (!['true', 'false'].includes(vtEnabled)) throw new Error('VIRUSTOTAL_ENABLED must be true or false.');
+  let reputation: VirusTotalReputationProvider | undefined;
+  if (vtEnabled === 'true') {
+    const key = process.env['VIRUSTOTAL_API_KEY'];
+    if (!key) throw new Error('VIRUSTOTAL_API_KEY must be configured when VirusTotal is enabled.');
+    let allowlist: unknown;
+    try { allowlist = JSON.parse(process.env['VIRUSTOTAL_ALLOWLIST_JSON'] ?? '[]'); }
+    catch { throw new Error('VIRUSTOTAL_ALLOWLIST_JSON must be a JSON array of authorized test URLs.'); }
+    if (!Array.isArray(allowlist) || allowlist.length === 0 || !allowlist.every((entry) => typeof entry === 'string')) {
+      throw new Error('VIRUSTOTAL_ALLOWLIST_JSON must be a non-empty array of authorized test URLs.');
+    }
+    reputation = new VirusTotalReputationProvider(key, new Set<string>(allowlist), new MongoReputationQuota(activeDb, key));
+  }
   const analysisJobLeaseMs = Number(process.env['ANALYSIS_JOB_LEASE_MS'] ?? Math.max(180_000, sandboxAnalysisTimeoutMs + 10_000));
   if (!Number.isInteger(analysisJobLeaseMs) || analysisJobLeaseMs < sandboxAnalysisTimeoutMs + 10_000) {
     throw new Error('ANALYSIS_JOB_LEASE_MS must be at least 10000 milliseconds longer than the Sandbox HTTP timeout.');
@@ -155,7 +171,8 @@ async function bootstrap() {
     dailyAnalysisRepository,
     securityAuditRepository,
     sandboxService,
-    analysisJobMaxAttempts
+    analysisJobMaxAttempts,
+    reputation
   );
   const analysisJobWorker = new AnalysisJobWorker(dailyAnalysisRepository, processAnalysisJobUseCase, {
     concurrency: analysisJobConcurrency,

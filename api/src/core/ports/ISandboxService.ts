@@ -11,7 +11,7 @@ interface SandboxAnalysisCommon {
 
 export type SandboxAnalysisOutput = SandboxAnalysisCommon & (
   | { outcome: 'completed'; verdict: Verdict; reasons: string[]; screenshotRef?: string }
-  | { outcome: 'inconclusive'; reasonCode: 'tls_certificate_invalid' | 'resource_limit_exceeded' }
+  | { outcome: 'inconclusive'; reasonCode: 'tls_certificate_invalid' | 'resource_limit_exceeded' | 'dns_unavailable' | 'dom_inspection_failed' }
 );
 
 export interface ISandboxService {
