@@ -14,8 +14,24 @@ type AnalysisDetail = {
   completedAt?: string;
   processingStatus: string;
   submittedInput?: string;
-  analysis?: { verdict: string; reasons: string[]; signals?: string[]; finalDestination?: string; redirects?: string[] };
+  analysis?: { verdict: string; reasons: string[]; signals?: string[]; finalDestination?: string; redirects?: string[];
+    sourceResults?: { sourceName: string; status: string; summary?: string }[];
+    sourceFailures?: { sourceName: string; reasonCode: string }[] };
 };
+
+function reputationLabel(analysis: NonNullable<AnalysisDetail['analysis']>): string {
+  const result = analysis.sourceResults?.find((item) => item.sourceName === 'VirusTotal');
+  if (result?.status === 'match') return `Se encontraron detecciones. ${result.summary ?? ''}`;
+  if (result?.status === 'no_match') return `Sin detecciones en el informe consultado. ${result.summary ?? ''}`;
+  const failure = analysis.sourceFailures?.find((item) => item.sourceName === 'VirusTotal');
+  switch (failure?.reasonCode) {
+    case 'not_found': return 'No hay un informe disponible para este enlace.';
+    case 'rate_limited': return 'Consulta no disponible por límite de solicitudes.';
+    case 'error': return 'No fue posible consultar esta fuente.';
+    case 'not_queried': return 'No se consultó esta fuente.';
+    default: return 'No hay información disponible sobre esta fuente.';
+  }
+}
 
 const verdicts: Record<string, { title: string; message: string; color: string }> = {
   peligroso: { title: 'Peligroso', message: 'El análisis encontró señales de riesgo. Evita abrir este enlace.', color: colors.danger },
@@ -211,6 +227,7 @@ export default function AnalysisDetailScreen() {
                     <Text style={styles.helper}>Se muestra solo el dominio; no se exponen ruta ni parámetros del enlace.</Text>
                   </View>
                   {!!analysis?.reasons?.length && <View style={styles.section}><Text style={styles.sectionTitle}>Razones del análisis</Text>{analysis.reasons.map((reason, index) => <Text key={`${index}-${reason}`} style={styles.bullet}>•  {reason}</Text>)}</View>}
+                  {!!analysis && <View style={styles.section}><Text style={styles.sectionTitle}>Reputación externa · VirusTotal</Text><Text style={styles.helper}>{reputationLabel(analysis)}</Text><Text style={styles.helper}>Una fuente sin datos o sin detecciones no garantiza seguridad.</Text></View>}
                   {!!analysis?.finalDestination && <View style={styles.section}><Text style={styles.sectionTitle}>Destino final observado</Text><Text style={styles.domain}>{hostOnly(analysis.finalDestination) ?? 'Destino no disponible'}</Text></View>}
                   {!!analysis?.redirects?.length && <View style={styles.section}><Text style={styles.sectionTitle}>Redirecciones observadas</Text>{analysis.redirects.map((redirect, index) => <Text key={`${index}-${redirect}`} style={styles.domain}>{index + 1}. {hostOnly(redirect) ?? 'Destino no disponible'}</Text>)}</View>}
                   {!!actionError && <Text accessibilityRole="alert" style={styles.error}>{actionError}</Text>}
@@ -228,7 +245,7 @@ export default function AnalysisDetailScreen() {
                       <Pressable onPress={() => router.replace('/history')} accessibilityRole="button" style={styles.secondaryLink}><Text style={styles.action}>Ver en historial</Text></Pressable>
                     </>
                   )}
-                  <Text style={styles.disclaimer}>El resultado es informativo y no garantiza que un sitio sea seguro. Las señales del Sandbox no equivalen a consultas a proveedores externos.</Text>
+                  <Text style={styles.disclaimer}>El resultado es informativo y no garantiza que un sitio sea seguro. Las señales del Sandbox y de reputación son independientes.</Text>
                 </>
               )}
             </>

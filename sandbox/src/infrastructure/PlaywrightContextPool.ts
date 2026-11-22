@@ -1,12 +1,25 @@
-import { chromium, Browser, BrowserContext } from 'playwright';
+import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { AntiSsrfGuard } from '../core/AntiSsrfGuard.js';
 import { VerdictEvaluator, Verdict } from '../core/VerdictEvaluator.js';
 import { classifyNavigationFailure, isTlsCertificateValidationError } from '../core/classifyNavigationFailure.js';
 import { IScreenshotStorage } from './ScreenshotStorage.js';
+import { analyzeProbe, Canary, carriesCanary, classifyFollowUpField, createCanary, FollowUpKind } from '../core/CredentialProbe.js';
 import { createPlaywrightContextOptions, resolveEgressProxySettings } from './playwrightContextOptions.js';
 
 const MAX_RECORDED_REDIRECT_LOCATIONS = 10;
 const MAX_BROWSER_REQUESTS_PER_ANALYSIS = 256;
+// Prueba con credenciales inventadas: tiempo y peticiones propias, separadas del análisis principal.
+const CREDENTIAL_PROBE_MAX_MS = 6_000;
+const CREDENTIAL_PROBE_MIN_REMAINING_MS = CREDENTIAL_PROBE_MAX_MS + 4_000;
+const CREDENTIAL_PROBE_MAX_REQUESTS = 64;
+const MAX_RECORDED_EXFILTRATION_URLS = 10;
+
+interface CredentialProbeState {
+  started: boolean;
+  canary: Canary | null;
+  requestCount: number;
+  exfiltrationUrls: string[];
+}
 
 interface SandboxExecutionCommon {
   attemptId: string;
@@ -25,7 +38,7 @@ interface SandboxExecutionCommon {
 
 export type SandboxExecutionResult = SandboxExecutionCommon & (
   | { outcome: 'completed'; verdict: Verdict; reasons: string[]; screenshotRef?: string }
-  | { outcome: 'inconclusive'; reasonCode: 'tls_certificate_invalid' | 'resource_limit_exceeded' }
+  | { outcome: 'inconclusive'; reasonCode: 'tls_certificate_invalid' | 'resource_limit_exceeded' | 'dns_unavailable' | 'dom_inspection_failed' }
 );
 
 export class SandboxCapacityError extends Error {
@@ -99,7 +112,8 @@ export class PlaywrightContextPool {
     maxConcurrency = 3,
     executablePath?: string,
     maxQueuedJobs = maxConcurrency * 2,
-    private readonly analysisDeadlineMs = 25_000
+    private readonly analysisDeadlineMs = 25_000,
+    private readonly credentialProbeEnabled = false
   ) {
     if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 32) {
       throw new Error('Sandbox max concurrency must be an integer between 1 and 32.');
@@ -244,6 +258,10 @@ export class PlaywrightContextPool {
 
     // 2. DNS Destination Preflight
     const dnsCheck = await awaitBeforeDeadline(AntiSsrfGuard.validateDestination(preflight.parsedUrl), signal);
+    if (!dnsCheck.safe && dnsCheck.reasonCode === 'dns_unavailable') {
+      return { outcome: 'inconclusive', reasonCode: 'dns_unavailable', attemptId, targetUrl,
+        finalDestination: targetUrl, redirects: [], signals: ['dns_unavailable'], sourceResults: [] };
+    }
     if (!dnsCheck.safe) {
       const evaluation = VerdictEvaluator.evaluate({
         targetUrl,
@@ -288,8 +306,13 @@ export class PlaywrightContextPool {
     let tlsCertificateInvalid = false;
     let egressProxyError = false;
     let resourceLimitExceeded = false;
+    let dnsUnavailable = false;
+    let domInspectionFailed = false;
     let browserRequestCount = 0;
     let ssrfInFlightReason: string | undefined = undefined;
+    // Mientras dura la prueba de credenciales sus peticiones no cambian el estado del análisis principal:
+    // un destino bloqueado o sin DNS al que la página intenta mandar los datos es evidencia, no un fallo.
+    const probe: CredentialProbeState = { started: false, canary: null, requestCount: 0, exfiltrationUrls: [] };
     const registerBrowserRequest = (): boolean => {
       browserRequestCount += 1;
       if (browserRequestCount <= MAX_BROWSER_REQUESTS_PER_ANALYSIS) return true;
@@ -313,21 +336,40 @@ export class PlaywrightContextPool {
 
       // Intercept all network traffic for Anti-SSRF and signal logging
       await awaitBeforeDeadline(context.route('**', async (route) => {
-        if (resourceLimitExceeded) {
-          await route.abort('blockedbyclient').catch(() => undefined);
-          return;
-        }
-        if (!registerBrowserRequest()) {
-          await route.abort('blockedbyclient').catch(() => undefined);
-          return;
+        const probeRequest = probe.started;
+        if (probeRequest) {
+          probe.requestCount += 1;
+          if (probe.requestCount > CREDENTIAL_PROBE_MAX_REQUESTS) {
+            await route.abort('blockedbyclient').catch(() => undefined);
+            return;
+          }
+          // Se revisa antes de los filtros: intentar mandar los datos ya es la evidencia buscada.
+          const request = route.request();
+          let body: string | null = null;
+          try { body = request.postData(); } catch { body = null; }
+          if (probe.canary && carriesCanary(probe.canary, request.url(), body) &&
+              probe.exfiltrationUrls.length < MAX_RECORDED_EXFILTRATION_URLS) {
+            probe.exfiltrationUrls.push(request.url());
+          }
+        } else {
+          if (resourceLimitExceeded) {
+            await route.abort('blockedbyclient').catch(() => undefined);
+            return;
+          }
+          if (!registerBrowserRequest()) {
+            await route.abort('blockedbyclient').catch(() => undefined);
+            return;
+          }
         }
 
         const reqUrl = route.request().url();
         const check = AntiSsrfGuard.isSafeUrl(reqUrl);
 
         if (!check.valid || !check.parsedUrl) {
-          ssrfDetectedInFlight = true;
-          ssrfInFlightReason = check.reason;
+          if (!probeRequest) {
+            ssrfDetectedInFlight = true;
+            ssrfInFlightReason = check.reason;
+          }
           await route.abort('blockedbyclient');
           return;
         }
@@ -344,13 +386,22 @@ export class PlaywrightContextPool {
           throw error;
         }
         if (!destCheck.safe) {
+          if (probeRequest) {
+            await route.abort('blockedbyclient');
+            return;
+          }
+          if (destCheck.reasonCode === 'dns_unavailable') {
+            dnsUnavailable = true;
+            await route.abort('blockedbyclient');
+            return;
+          }
           ssrfDetectedInFlight = true;
           ssrfInFlightReason = destCheck.reason;
           await route.abort('blockedbyclient');
           return;
         }
 
-        if (resourceLimitExceeded) {
+        if (resourceLimitExceeded && !probeRequest) {
           await route.abort('blockedbyclient').catch(() => undefined);
           return;
         }
@@ -361,7 +412,7 @@ export class PlaywrightContextPool {
       // WebSockets use a separate Playwright interception API and must not bypass the per-analysis budget.
       // They are intentionally blocked: the HTTP Anti-SSRF validator does not accept ws:/wss: destinations.
       await awaitBeforeDeadline(context.routeWebSocket('**', async (webSocket) => {
-        if (!registerBrowserRequest()) {
+        if (!probe.started && !registerBrowserRequest()) {
           await webSocket.close({ code: 1008, reason: 'Analysis resource limit exceeded' }).catch(() => undefined);
           return;
         }
@@ -373,7 +424,7 @@ export class PlaywrightContextPool {
 
       // A failed main document or subresource with a Chromium certificate error invalidates inspection.
       page.on('requestfailed', (request) => {
-        if (isTlsCertificateValidationError(request.failure()?.errorText)) {
+        if (!probe.started && isTlsCertificateValidationError(request.failure()?.errorText)) {
           tlsCertificateInvalid = true;
         }
       });
@@ -392,14 +443,17 @@ export class PlaywrightContextPool {
 
       // Record HTTP redirects
       page.on('response', (response) => {
+        // Lo que pase durante la prueba de credenciales no altera la evidencia de la navegación original.
+        if (probe.started) return;
         if (response.headers()['x-enlaceseguro-egress-error']?.trim().toLowerCase() === 'true') {
           egressProxyError = true;
           void closeContext();
         }
         const status = response.status();
-        if ([301, 302, 303, 307, 308].includes(status)) {
+        const request = response.request();
+        if ([301, 302, 303, 307, 308].includes(status) && request.isNavigationRequest() && request.frame() === page.mainFrame()) {
           const location = response.headers()['location'];
-          if (location && !redirects.includes(location)) {
+          if (location) {
             if (redirects.length < MAX_RECORDED_REDIRECT_LOCATIONS) {
               redirects.push(location);
             } else if (!signals.includes('redirect_evidence_truncated')) {
@@ -419,7 +473,7 @@ export class PlaywrightContextPool {
       } catch (err: unknown) {
         if (egressProxyError) throw new SandboxNavigationError();
         if (signal.aborted) throw timeoutError(signal);
-        if (!resourceLimitExceeded) {
+        if (!resourceLimitExceeded && !dnsUnavailable) {
           if (isTlsCertificateValidationError(err)) {
             tlsCertificateInvalid = true;
           } else {
@@ -438,7 +492,7 @@ export class PlaywrightContextPool {
       if (egressProxyError) throw new SandboxNavigationError();
 
       // DOM Signals Inspection
-      if (!ssrfDetectedInFlight && !tlsCertificateInvalid && !resourceLimitExceeded) {
+      if (!ssrfDetectedInFlight && !tlsCertificateInvalid && !resourceLimitExceeded && !dnsUnavailable) {
         try {
           const domSignals = await awaitBeforeDeadline(page.evaluate(() => {
             const detected: string[] = [];
@@ -492,11 +546,12 @@ export class PlaywrightContextPool {
           signals.push(...domSignals);
         } catch (error: unknown) {
           if (signal.aborted) throw timeoutError(signal);
-          // Page may have closed or crashed
+          domInspectionFailed = true;
         }
 
         // Capture Screenshot
         try {
+          if (domInspectionFailed) throw new Error('DOM inspection failed');
           screenshotBuffer = await awaitBeforeDeadline(page.screenshot({
             type: 'webp',
             fullPage: false
@@ -505,6 +560,26 @@ export class PlaywrightContextPool {
         } catch (error: unknown) {
           if (signal.aborted) throw timeoutError(signal);
           // Screenshot failed
+        }
+
+        // Prueba con credenciales inventadas: solo si está activada, hay un campo de contraseña y queda tiempo.
+        const hasPasswordField = signals.includes('password_input_present') || signals.includes('password_input_on_http');
+        if (this.credentialProbeEnabled && hasPasswordField && !domInspectionFailed && !egressProxyError) {
+          if (deadlineAt - Date.now() < CREDENTIAL_PROBE_MIN_REMAINING_MS) {
+            signals.push('credential_probe_skipped_time');
+          } else {
+            probe.canary = createCanary();
+            probe.started = true;
+            const outcome = await this.probeCredentials(page, probe.canary, signal);
+            const analysis = analyzeProbe({
+              pageUrl: finalDestination,
+              submitted: outcome.submitted,
+              exfiltrationUrls: probe.exfiltrationUrls,
+              followUpKinds: outcome.followUpKinds,
+              urlAfterSubmit: outcome.urlAfterSubmit
+            });
+            signals.push(...analysis.signals);
+          }
         }
       }
       if (egressProxyError) throw new SandboxNavigationError();
@@ -523,6 +598,11 @@ export class PlaywrightContextPool {
         signals: ['browser_request_limit_exceeded'],
         sourceResults: []
       };
+    }
+    if (dnsUnavailable || domInspectionFailed) {
+      const reasonCode = dnsUnavailable ? 'dns_unavailable' : 'dom_inspection_failed';
+      return { outcome: 'inconclusive', reasonCode, attemptId, targetUrl, finalDestination: targetUrl,
+        redirects: [], signals: [reasonCode], sourceResults: [] };
     }
     if (tlsCertificateInvalid) {
       return {
@@ -583,6 +663,66 @@ export class PlaywrightContextPool {
       await pendingContextCleanup;
       await closeContext();
       if (slotAcquired) this.releaseSlot();
+    }
+  }
+
+  /**
+   * Llena el primer formulario con contraseña usando la credencial inventada, lo envía y revisa
+   * qué pide la página después. No lanza errores salvo el de tiempo agotado: si algo no se puede
+   * hacer, devuelve lo que alcanzó a observar.
+   */
+  private async probeCredentials(page: Page, canary: Canary, signal: AbortSignal):
+    Promise<{ submitted: boolean; followUpKinds: FollowUpKind[]; urlAfterSubmit?: string }> {
+    const stepTimeout = 1_500;
+    const startedAt = Date.now();
+    const remaining = () => Math.max(1, CREDENTIAL_PROBE_MAX_MS - (Date.now() - startedAt));
+    try {
+      const password = page.locator('input[type="password"]:visible').first();
+      if (await awaitBeforeDeadline(password.count(), signal) === 0) return { submitted: false, followUpKinds: [] };
+
+      const form = password.locator('xpath=ancestor::form[1]');
+      const scope = await awaitBeforeDeadline(form.count(), signal) > 0 ? form : page.locator('body');
+      const identity = scope.locator([
+        'input[type="email"]:visible', 'input[type="text"]:visible', 'input[type="tel"]:visible',
+        'input:not([type]):visible'
+      ].join(', ')).first();
+      if (await awaitBeforeDeadline(identity.count(), signal) > 0) {
+        await awaitBeforeDeadline(identity.fill(canary.identity, { timeout: stepTimeout }), signal);
+      }
+      await awaitBeforeDeadline(password.fill(canary.password, { timeout: stepTimeout }), signal);
+
+      const urlBefore = page.url();
+      await awaitBeforeDeadline(password.press('Enter', { timeout: stepTimeout }), signal);
+      await awaitBeforeDeadline(page.waitForLoadState('networkidle', { timeout: Math.min(2_500, remaining()) }).catch(() => undefined), signal);
+
+      // Algunas páginas no envían con Enter y esperan el clic en el botón.
+      if (page.url() === urlBefore) {
+        const button = scope.locator('button[type="submit"]:visible, input[type="submit"]:visible, button:not([type]):visible').first();
+        if (await awaitBeforeDeadline(button.count(), signal) > 0) {
+          await awaitBeforeDeadline(button.click({ timeout: stepTimeout }).catch(() => undefined), signal);
+          await awaitBeforeDeadline(page.waitForLoadState('networkidle', { timeout: Math.min(2_500, remaining()) }).catch(() => undefined), signal);
+        }
+      }
+
+      const fields = await awaitBeforeDeadline(page.evaluate(() => Array.from(document.querySelectorAll<HTMLInputElement>('input'))
+        .filter((input) => input.type !== 'hidden' && input.offsetParent !== null)
+        .slice(0, 40)
+        .map((input) => ({
+          attributes: [input.name, input.id, input.placeholder, input.autocomplete, input.getAttribute('aria-label') ?? '',
+            input.labels?.[0]?.textContent ?? '', input.type].join(' '),
+          maxLength: input.maxLength
+        }))), signal).catch((error: unknown) => {
+        if (signal.aborted) throw error;
+        return [] as Array<{ attributes: string; maxLength: number }>;
+      });
+      const followUpKinds = [...new Set(fields
+        .map((field) => classifyFollowUpField(field.attributes, field.maxLength))
+        .filter((kind): kind is FollowUpKind => kind !== null))];
+
+      return { submitted: true, followUpKinds, urlAfterSubmit: page.url() };
+    } catch (error: unknown) {
+      if (signal.aborted) throw timeoutError(signal);
+      return { submitted: false, followUpKinds: [] };
     }
   }
 

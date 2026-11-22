@@ -130,7 +130,7 @@ export class HttpSandboxService implements ISandboxService {
 
     if (raw['outcome'] === 'inconclusive') {
       const reasonCode = raw['reasonCode'];
-      if ((reasonCode !== 'tls_certificate_invalid' && reasonCode !== 'resource_limit_exceeded') || raw['verdict'] !== undefined ||
+      if ((reasonCode !== 'tls_certificate_invalid' && reasonCode !== 'resource_limit_exceeded' && reasonCode !== 'dns_unavailable' && reasonCode !== 'dom_inspection_failed') || raw['verdict'] !== undefined ||
         raw['reasons'] !== undefined || raw['screenshotRef'] !== undefined) {
         throw new SandboxServiceError('sandbox_invalid_response', true);
       }

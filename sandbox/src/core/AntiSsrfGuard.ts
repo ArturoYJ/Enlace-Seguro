@@ -3,6 +3,7 @@ import net from 'node:net';
 
 export interface SsrfValidationResult {
   safe: boolean;
+  reasonCode?: 'dns_unavailable';
   resolvedIp?: string;
   reason?: string;
 }
@@ -79,6 +80,7 @@ export class AntiSsrfGuard {
       if (!records || records.length === 0) {
         return {
           safe: false,
+          reasonCode: 'dns_unavailable',
           reason: `DNS resolution failed for hostname '${hostname}': No records found.`
         };
       }
@@ -101,6 +103,7 @@ export class AntiSsrfGuard {
       const message = err instanceof Error ? err.message : 'DNS lookup error';
       return {
         safe: false,
+        reasonCode: 'dns_unavailable',
         reason: `DNS resolution error for '${hostname}': ${message}`
       };
     }

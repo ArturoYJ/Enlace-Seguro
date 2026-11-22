@@ -8,6 +8,20 @@ import { HttpSandboxService, resolveSandboxServiceUrl, validateSandboxServiceUrl
 const serviceToken = 'test_sandbox_service_token_32_bytes_long';
 
 describe('HttpSandboxService service authentication', () => {
+  it('accepts DNS and DOM inconclusive outcomes without a verdict', async (t) => {
+    let reasonCode = 'dns_unavailable';
+    t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({
+      outcome: 'inconclusive', reasonCode, attemptId: 'attempt-1', targetUrl: 'https://example.test',
+      finalDestination: 'https://example.test', redirects: [], signals: [reasonCode], sourceResults: []
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const service = new HttpSandboxService('https://sandbox.internal', serviceToken);
+    for (reasonCode of ['dns_unavailable', 'dom_inspection_failed']) {
+      const result = await service.analyze('attempt-1', 'https://example.test');
+      assert.equal(result.outcome, 'inconclusive');
+      if (result.outcome === 'inconclusive') assert.equal(result.reasonCode, reasonCode);
+      assert.equal('verdict' in result, false);
+    }
+  });
   it('retrieves only WebP captures with the internal bearer, no redirects, and a bounded response contract', async (t) => {
     const calls: Array<{ url: string; headers: Headers; redirect?: RequestRedirect }> = [];
     const bytes = new Uint8Array([82, 73, 70, 70, 4, 0, 0, 0, 87, 69, 66, 80]);

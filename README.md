@@ -93,6 +93,10 @@ Esto detiene MongoDB del proyecto y conserva su volumen. **No ejecutes `scripts/
 
 ## Estado y pendientes
 
-La evidencia incluye un recorrido confirmado por el usuario en iPhone y una prueba de expiración inducida del token; no sustituye una prueba desde un clon limpio ni una espera de expiración natural. Siguen pendientes la validación Android en dispositivo, QA visual y accesibilidad restante, y portabilidad fuera de macOS. El repositorio no cuenta actualmente con una licencia general identificada: debe elegirse antes de aclarar permisos de reutilización.
+La evidencia incluye un recorrido confirmado por el usuario en iPhone y una prueba de expiración inducida del token; no sustituye una prueba desde un clon limpio ni una espera de expiración natural. Siguen pendientes la validación Android en dispositivo, QA visual y accesibilidad restante, y portabilidad fuera de macOS.
+
+## Licencia
+
+El código propio de EnlaceSeguro se distribuye bajo la [licencia MIT](LICENSE). Los componentes de terceros conservan sus respectivas licencias y avisos, incluido el [aviso de Expo](frontend/mobile/LICENSE).
 
 Consulta [demo académica](docs/roadmap/academic-demo.md), [runbook local](docs/operations/local-demo-runbook.md), [frontend](frontend/README.md), [API](api/README.md), [base de datos](database/README.md) y [pruebas](tests/README.md). La guía de trabajo del proyecto está en [Agents/README.md](Agents/README.md).

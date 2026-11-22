@@ -900,6 +900,10 @@ components:
 
     SourceResult:
       type: object
+      description: >-
+        Para VirusTotal, match y no_match corresponden a un informe consultado;
+        no_match no significa que la URL sea segura. El informe se considera vigente
+        durante un máximo de 24 horas desde su fecha de análisis.
       required:
         - sourceName
         - status
@@ -929,6 +933,9 @@ components:
 
     SourceFailure:
       type: object
+      description: >-
+        Para VirusTotal, not_queried, not_found, rate_limited y error indican
+        cobertura ausente o parcial; ninguno implica que la URL sea segura.
       required:
         - sourceName
         - reasonCode
