@@ -19,7 +19,15 @@ async function main() {
   const storage = new LocalScreenshotStorage();
   await storage.init();
 
-  const pool = new PlaywrightContextPool(storage, concurrency, undefined, undefined, analysisDeadlineMs);
+  // Llenar formularios de acceso con credenciales inventadas. Apagado por defecto: al activarlo, el
+  // sandbox envía datos falsos a la página analizada y eso le avisa a su dueño que alguien la visitó.
+  const credentialProbe = process.env['SANDBOX_CREDENTIAL_PROBE_ENABLED'] ?? 'false';
+  if (!['true', 'false'].includes(credentialProbe)) {
+    throw new Error('SANDBOX_CREDENTIAL_PROBE_ENABLED must be true or false.');
+  }
+  console.log(`[INFO] Credential probe: ${credentialProbe === 'true' ? 'activada' : 'desactivada'}`);
+
+  const pool = new PlaywrightContextPool(storage, concurrency, undefined, undefined, analysisDeadlineMs, credentialProbe === 'true');
   await pool.init();
 
   const app = buildSandboxServer({ pool, storage, serviceToken });
