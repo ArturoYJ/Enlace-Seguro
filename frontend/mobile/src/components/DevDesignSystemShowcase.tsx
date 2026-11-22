@@ -69,7 +69,7 @@ export function DevDesignSystemShowcase({ visible, onClose }: DevDesignSystemSho
             {typefaceSamples.map(([weight, family]) => (
               <View key={weight} style={styles.typefaceRow}>
                 <Text style={styles.typefaceLabel}>{weight}</Text>
-                <Text style={{ color: colors.text, fontFamily: family, fontSize: 18 }}>
+                <Text style={{ color: colors.text, fontFamily: family, fontSize: 20 }}>
                   EnlaceSeguro 0123
                 </Text>
               </View>
@@ -151,20 +151,20 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   header: { minHeight: 70, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.md, paddingHorizontal: space.xl, borderBottomWidth: 1, borderBottomColor: colors.border },
   headerCopy: { gap: space.xs },
-  eyebrow: { color: colors.primaryText, fontFamily: typefaces.semibold, fontSize: 10, letterSpacing: 1.2 },
-  title: { color: colors.text, fontFamily: typefaces.bold, fontSize: 21 },
+  eyebrow: { color: colors.primaryText, fontFamily: typefaces.semibold, fontSize: 12, letterSpacing: 1.2 },
+  title: { color: colors.text, fontFamily: typefaces.bold, fontSize: 23 },
   closeButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: space.sm },
-  closeLabel: { color: colors.primaryText, fontFamily: typefaces.semibold, fontSize: 14 },
+  closeLabel: { color: colors.primaryText, fontFamily: typefaces.semibold, fontSize: 16 },
   content: { gap: space.md, paddingHorizontal: space.xl, paddingTop: space.lg, paddingBottom: space.xxxl },
-  sectionTitle: { color: colors.text, fontFamily: typefaces.semibold, fontSize: 16, marginTop: space.md },
+  sectionTitle: { color: colors.text, fontFamily: typefaces.semibold, fontSize: 18, marginTop: space.md },
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   swatchCard: { width: '30%', flexGrow: 1, gap: space.xs, padding: space.sm, borderRadius: radius.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   swatch: { height: 34, borderRadius: radius.sm },
-  sampleName: { color: colors.text, fontFamily: typefaces.medium, fontSize: 12 },
-  sampleValue: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 10 },
+  sampleName: { color: colors.text, fontFamily: typefaces.medium, fontSize: 14 },
+  sampleValue: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 12 },
   sampleCard: { gap: space.md, padding: space.md, borderRadius: radius.md, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   typefaceRow: { minHeight: 32, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.sm },
-  typefaceLabel: { color: colors.textSecondary, fontFamily: typefaces.medium, fontSize: 11 },
+  typefaceLabel: { color: colors.textSecondary, fontFamily: typefaces.medium, fontSize: 13 },
   scaleRow: { minHeight: 24, flexDirection: 'row', alignItems: 'center', gap: space.md },
   spacingSample: { height: 6, maxWidth: '55%', borderRadius: radius.pill, backgroundColor: colors.primary },
   radiusSamples: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
   toneSelectors: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   toneButton: { minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.md, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
   toneButtonSelected: { borderColor: colors.primaryText, backgroundColor: colors.surfaceRaised },
-  toneLabel: { color: colors.textSecondary, fontFamily: typefaces.medium, fontSize: 12, textTransform: 'capitalize' },
+  toneLabel: { color: colors.textSecondary, fontFamily: typefaces.medium, fontSize: 14, textTransform: 'capitalize' },
   toneLabelSelected: { color: colors.text, fontFamily: typefaces.semibold },
   skeletonLine: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   skeletonCopy: { flex: 1, gap: space.sm },

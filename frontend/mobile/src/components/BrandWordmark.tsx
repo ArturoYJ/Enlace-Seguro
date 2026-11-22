@@ -13,7 +13,7 @@ export function BrandWordmark({ compact = false }: { compact?: boolean }) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  wordmark: { color: colors.text, fontFamily: typefaces.semibold, fontSize: 16, letterSpacing: -0.2 },
-  compact: { fontSize: 14 },
+  wordmark: { color: colors.text, fontFamily: typefaces.semibold, fontSize: 18, letterSpacing: -0.2 },
+  compact: { fontSize: 16 },
   accent: { color: colors.primaryText },
 });

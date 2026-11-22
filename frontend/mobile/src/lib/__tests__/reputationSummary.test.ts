@@ -1,22 +1,42 @@
 import { readableSummary, reputationInfo } from '../reputationSummary';
+import { friendlyReason } from '../friendlyReasons';
 
 describe('reputationSummary', () => {
   it('cambia la fecha ISO del resumen por una fecha legible en hora de México', () => {
     const text = readableSummary('Informe del 2026-11-22T04:39:54.000Z; detecciones maliciosas: 0.');
     expect(text).not.toMatch(/T04:39/);
     expect(text).toMatch(/21 nov 2026/);
-    expect(text).toMatch(/detecciones maliciosas: 0\.$/);
   });
 
-  it('marca en rojo cuando hay detecciones y en verde cuando no las hay', () => {
-    expect(reputationInfo([{ sourceName: 'VirusTotal', status: 'match', summary: 'x' }]).tone).toBe('danger');
-    expect(reputationInfo([{ sourceName: 'VirusTotal', status: 'no_match' }])).toEqual(
-      expect.objectContaining({ chip: 'Sin detecciones', tone: 'success' }));
+  it('cuenta los antivirus que lo reportan y usa rojo', () => {
+    const info = reputationInfo([{ sourceName: 'VirusTotal', status: 'match', summary: 'Informe del 2026-11-22T04:39:54.000Z; detecciones maliciosas: 7.' }]);
+    expect(info).toEqual(expect.objectContaining({ headline: '7 antivirus lo reportan como peligroso', tone: 'danger' }));
+    expect(info.checkedAt).toMatch(/21 nov 2026/);
+  });
+
+  it('sin reportes se ve neutral (no verde) y advierte que un sitio nuevo puede no estar reportado', () => {
+    const info = reputationInfo([{ sourceName: 'VirusTotal', status: 'no_match', summary: 'detecciones maliciosas: 0.' }]);
+    expect(info.tone).toBe('neutral');
+    expect(info.text).toMatch(/recién creado/);
   });
 
   it('explica cada motivo de no tener resultado', () => {
-    expect(reputationInfo([], [{ sourceName: 'VirusTotal', reasonCode: 'not_found' }]).chip).toBe('Sin informe');
-    expect(reputationInfo([], [{ sourceName: 'VirusTotal', reasonCode: 'not_queried' }]).chip).toBe('No consultado');
-    expect(reputationInfo().chip).toBe('Sin datos');
+    expect(reputationInfo([], [{ sourceName: 'VirusTotal', reasonCode: 'not_found' }]).short).toBe('Desconocido');
+    expect(reputationInfo([], [{ sourceName: 'VirusTotal', reasonCode: 'not_queried' }]).short).toBe('No consultado');
+    expect(reputationInfo().short).toBe('Sin datos');
+  });
+});
+
+describe('friendlyReason', () => {
+  it('traduce las razones técnicas del sandbox', () => {
+    expect(friendlyReason('La página aceptó datos de acceso inventados y después pidió datos de tarjeta.').title).toBe('Te pide los datos de tu tarjeta');
+    expect(friendlyReason('La página aceptó datos de acceso inventados y después pidió un código de seguridad o NIP.').title).toBe('Te pide códigos o tu NIP');
+    expect(friendlyReason('Se detectó un formulario de ingreso de contraseñas sobre una conexión no cifrada (HTTP).').title).toBe('Pide contraseña sin conexión segura');
+  });
+
+  it('conserva el texto original cuando nombra la marca suplantada o no se reconoce', () => {
+    const brand = 'El nombre "paypal" aparece en el enlace, pero el dominio real es "paypa1.com".';
+    expect(friendlyReason(brand)).toEqual({ title: 'Usa el nombre de una marca que no es suya', detail: brand });
+    expect(friendlyReason('Algo nuevo')).toEqual({ title: 'Otra señal de riesgo', detail: 'Algo nuevo' });
   });
 });

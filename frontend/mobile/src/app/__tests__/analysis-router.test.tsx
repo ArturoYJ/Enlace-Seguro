@@ -412,7 +412,7 @@ describe('analysis URL flow', () => {
     });
 
     expect(screen.getByText('Sin amenazas detectadas')).toBeTruthy();
-    expect(screen.getByText('No se detectaron amenazas en este análisis. Esto no garantiza que el sitio sea seguro.')).toBeTruthy();
+    expect(screen.getByText('Abrimos la página en un lugar seguro y no hizo nada raro.')).toBeTruthy();
     expect(authenticatedRequest).toHaveBeenCalledWith(expect.stringMatching(/^\/analyses\/attempt-1\?localDate=/), expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
@@ -577,7 +577,7 @@ describe('analysis URL flow', () => {
     expect(screen.getByText('phishing.example')).toBeTruthy();
     expect(screen.getByText(/formulario de acceso sospechoso/)).toBeTruthy();
     expect(screen.queryByText(/private|login_form_detected|Google Safe Browsing/)).toBeNull();
-    expect(screen.getByText('No hay información disponible sobre esta fuente.')).toBeTruthy();
+    expect(screen.getByText('Sin información de los antivirus')).toBeTruthy();
     expect(screen.getByText('Analizar otro enlace')).toBeTruthy();
     expect(screen.getByText('Ver en historial')).toBeTruthy();
     expect(screen.queryByText('Captura')).toBeNull();

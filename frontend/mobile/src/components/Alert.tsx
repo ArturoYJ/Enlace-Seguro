@@ -45,13 +45,13 @@ const styles = StyleSheet.create({
   title: {
     color: colors.text,
     fontFamily: typefaces.semibold,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 16,
+    lineHeight: 23,
   },
   message: {
     color: colors.textSecondary,
     fontFamily: typefaces.regular,
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 16,
+    lineHeight: 24,
   },
 });

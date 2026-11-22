@@ -63,14 +63,14 @@ export function AnalysisCapture({ attemptId, accessToken }: Props) {
 const styles = StyleSheet.create({
   section: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16, gap: 12 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  title: { color: colors.text, fontFamily: typefaces.semibold, fontSize: 15 },
+  title: { color: colors.text, fontFamily: typefaces.semibold, fontSize: 17 },
   badge: { borderRadius: radius.pill, backgroundColor: `${colors.primary}22`, paddingHorizontal: 10, paddingVertical: 4 },
-  badgeText: { color: colors.primaryText, fontFamily: typefaces.semibold, fontSize: 10, letterSpacing: 0.8 },
+  badgeText: { color: colors.primaryText, fontFamily: typefaces.semibold, fontSize: 12, letterSpacing: 0.8 },
   frame: { width: '100%', borderRadius: radius.sm, overflow: 'hidden', backgroundColor: colors.backgroundDeep, borderWidth: 1, borderColor: colors.border, justifyContent: 'center' },
   image: { width: '100%', height: '100%' },
-  helper: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 11, lineHeight: 16 },
+  helper: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 13, lineHeight: 19 },
   modal: { flex: 1, backgroundColor: '#000' },
   close: { alignSelf: 'flex-end', paddingHorizontal: 18, paddingVertical: 12 },
-  closeText: { color: colors.white, fontFamily: typefaces.semibold, fontSize: 15 },
+  closeText: { color: colors.white, fontFamily: typefaces.semibold, fontSize: 17 },
   expandedImage: { flex: 1, width: '100%' },
 });
