@@ -1,5 +1,5 @@
 import { AddressInfo } from 'node:net';
-import { createHash } from 'node:crypto';
+import { BcryptPasswordHasher } from '../../src/infrastructure/security/BcryptPasswordHasher.js';
 import { MongoClient } from 'mongodb';
 import { MongoUserRepository } from '../../src/infrastructure/database/mongo/MongoUserRepository.js';
 import { MongoRefreshTokenRepository } from '../../src/infrastructure/database/mongo/MongoRefreshTokenRepository.js';
@@ -144,14 +144,8 @@ async function main(): Promise<void> {
       assertFreshTestDatabase(db)
     ]);
 
-    const passwordHasher: IPasswordHasher = {
-      async hash(password) {
-        return `e2e-sha256:${createHash('sha256').update(password, 'utf8').digest('hex')}`;
-      },
-      async compare(password, hash) {
-        return hash === `e2e-sha256:${createHash('sha256').update(password, 'utf8').digest('hex')}`;
-      }
-    };
+    // bcrypt con el costo mínimo: las pruebas e2e siguen siendo rápidas sin usar un hash débil.
+    const passwordHasher: IPasswordHasher = new BcryptPasswordHasher(4);
     if (process.env['E2E_SEED_ADMIN'] === 'true') {
       await userRepository.create({
         emailNormalized: E2E_ADMIN_EMAIL,
