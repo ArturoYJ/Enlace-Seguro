@@ -113,13 +113,17 @@ async function bootstrap() {
   if (vtEnabled === 'true') {
     const key = process.env['VIRUSTOTAL_API_KEY'];
     if (!key) throw new Error('VIRUSTOTAL_API_KEY must be configured when VirusTotal is enabled.');
+    const lookupMode = process.env['VIRUSTOTAL_LOOKUP_MODE'] ?? 'url';
+    if (!['url', 'domain'].includes(lookupMode)) throw new Error('VIRUSTOTAL_LOOKUP_MODE must be url or domain.');
     let allowlist: unknown;
     try { allowlist = JSON.parse(process.env['VIRUSTOTAL_ALLOWLIST_JSON'] ?? '[]'); }
     catch { throw new Error('VIRUSTOTAL_ALLOWLIST_JSON must be a JSON array of authorized test URLs.'); }
-    if (!Array.isArray(allowlist) || allowlist.length === 0 || !allowlist.every((entry) => typeof entry === 'string')) {
+    // En modo dominio la lista es opcional: los enlaces fuera de ella se consultan solo por dominio.
+    if (!Array.isArray(allowlist) || (lookupMode === 'url' && allowlist.length === 0) || !allowlist.every((entry) => typeof entry === 'string')) {
       throw new Error('VIRUSTOTAL_ALLOWLIST_JSON must be a non-empty array of authorized test URLs.');
     }
-    reputation = new VirusTotalReputationProvider(key, new Set<string>(allowlist), new MongoReputationQuota(activeDb, key));
+    reputation = new VirusTotalReputationProvider(key, new Set<string>(allowlist), new MongoReputationQuota(activeDb, key),
+      fetch, () => new Date(), 5_000, lookupMode === 'domain');
   }
   const analysisJobLeaseMs = Number(process.env['ANALYSIS_JOB_LEASE_MS'] ?? Math.max(180_000, sandboxAnalysisTimeoutMs + 10_000));
   if (!Number.isInteger(analysisJobLeaseMs) || analysisJobLeaseMs < sandboxAnalysisTimeoutMs + 10_000) {

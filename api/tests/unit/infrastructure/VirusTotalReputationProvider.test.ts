@@ -98,4 +98,39 @@ describe('VirusTotal reputation with simulated transport', () => {
       assert.equal((await provider.check(url)).status, 'error');
     }
   });
+
+  it('modo dominio: fuera de la lista envía solo el dominio, nunca ruta ni parámetros', async () => {
+    const seen: string[] = [];
+    const quota = { reserve: async () => true, cooldown: async () => undefined };
+    const transport: typeof fetch = async (input) => { seen.push(String(input)); return new Response(report(3)); };
+    const provider = new VirusTotalReputationProvider('test-key', new Set([url]), quota, transport, () => now, 5_000, true);
+    const result = await provider.check('https://login.banco-falso.test/reset?token=SECRETO#frag');
+    assert.equal(result.status, 'match');
+    assert.equal(result.status === 'match' ? result.scope : '', 'domain');
+    assert.equal(seen[0], 'https://www.virustotal.com/api/v3/domains/login.banco-falso.test');
+    assert.doesNotMatch(seen.join(' '), /SECRETO|reset|frag/);
+    // La lista sigue teniendo prioridad y consulta el enlace exacto.
+    assert.equal((await provider.check(url)).status === 'match' && seen[1]?.includes('/urls/'), true);
+    for (const local of ['http://127.0.0.1/x', 'http://localhost/', 'https://printer.local/', 'https://intranet/']) {
+      assert.equal((await provider.check(local)).status, 'not_queried');
+    }
+    assert.equal(seen.length, 2);
+  });
+
+  it('sin modo dominio, un enlace fuera de la lista no se consulta', async () => {
+    const quota = { reserve: async () => true, cooldown: async () => undefined };
+    const provider = new VirusTotalReputationProvider('test-key', new Set([url]), quota,
+      async () => { throw new Error('transport called'); }, () => now);
+    assert.equal((await provider.check('https://login.banco-falso.test/')).status, 'not_queried');
+  });
+
+  it('acepta informes de varios días y los entrega con su fecha', async () => {
+    const quota = { reserve: async () => true, cooldown: async () => undefined };
+    const old = Math.floor(now.getTime() / 1000) - 10 * 24 * 60 * 60;
+    const body = JSON.stringify({ data: { attributes: { last_analysis_stats: { malicious: 5 }, last_analysis_date: old } } });
+    const provider = new VirusTotalReputationProvider('test-key', new Set([url]), quota, async () => new Response(body), () => now);
+    const result = await provider.check(url);
+    assert.equal(result.status, 'match');
+    assert.equal(result.status === 'match' ? result.reportAt.getTime() : 0, old * 1000);
+  });
 });
