@@ -1,3 +1,5 @@
+import { AntiSsrfGuard } from './AntiSsrfGuard.js';
+
 /**
  * Señales que se obtienen solo de la URL, sin cargar la página.
  *
@@ -65,6 +67,9 @@ export function analyzeUrl(url: string): UrlHeuristicResult {
   if (!hostname) return { signals, reasons };
 
   if (isIpLiteral(hostname)) {
+    // Solo cuentan las IP públicas. Una IP privada o de loopback la bloquea antes el filtro anti-SSRF
+    // en un análisis real, así que aquí solo aparece en pruebas con servidores locales.
+    if (AntiSsrfGuard.isPrivateOrReservedIp(hostname.replace(/^\[|\]$/g, ''))) return { signals, reasons };
     signals.push('ip_literal_host');
     reasons.push('El enlace usa una dirección IP en lugar de un nombre de dominio.');
     return { signals, reasons };
