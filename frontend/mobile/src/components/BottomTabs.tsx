@@ -55,6 +55,6 @@ export function BottomTabs() {
 const styles = StyleSheet.create({
   bar: { minHeight: 66, flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 18, paddingTop: 8, paddingBottom: 5 },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 48 },
-  label: { color: colors.textMuted, fontFamily: typefaces.medium, fontSize: 10 },
+  label: { color: colors.textMuted, fontFamily: typefaces.medium, fontSize: 12 },
   activeLabel: { color: colors.primaryText, fontFamily: typefaces.semibold },
 });

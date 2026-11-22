@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
   outlined: { backgroundColor: 'transparent', borderColor: colors.textSecondary },
   outlinedPressed: { backgroundColor: colors.surfaceRaised, transform: [{ scale: 0.99 }] },
   disabled: { opacity: 0.55 },
-  label: { fontSize: 15, fontFamily: typefaces.semibold, letterSpacing: 0.2 },
+  label: { fontSize: 17, fontFamily: typefaces.semibold, letterSpacing: 0.2 },
   primaryLabel: { color: colors.white },
   secondaryLabel: { color: colors.text },
   invertedLabel: { color: colors.backgroundDeep },

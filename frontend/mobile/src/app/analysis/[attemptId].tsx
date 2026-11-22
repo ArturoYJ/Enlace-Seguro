@@ -6,6 +6,9 @@ import { authenticatedRequest, useSession } from '../../lib/session';
 import { useAnalysisStatusAnnouncement } from '../../lib/useAnalysisStatusAnnouncement';
 import { analysisDetailErrorMessage } from '../../lib/analysisErrorMessage';
 import { colors, radius, typefaces } from '../../theme/tokens';
+import { AnalysisCapture } from '../../components/AnalysisCapture';
+import { reputationInfo } from '../../lib/reputationSummary';
+import { friendlyReason } from '../../lib/friendlyReasons';
 
 type AnalysisDetail = {
   attemptId: string;
@@ -19,24 +22,13 @@ type AnalysisDetail = {
     sourceFailures?: { sourceName: string; reasonCode: string }[] };
 };
 
-function reputationLabel(analysis: NonNullable<AnalysisDetail['analysis']>): string {
-  const result = analysis.sourceResults?.find((item) => item.sourceName === 'VirusTotal');
-  if (result?.status === 'match') return `Se encontraron detecciones. ${result.summary ?? ''}`;
-  if (result?.status === 'no_match') return `Sin detecciones en el informe consultado. ${result.summary ?? ''}`;
-  const failure = analysis.sourceFailures?.find((item) => item.sourceName === 'VirusTotal');
-  switch (failure?.reasonCode) {
-    case 'not_found': return 'No hay un informe disponible para este enlace.';
-    case 'rate_limited': return 'Consulta no disponible por límite de solicitudes.';
-    case 'error': return 'No fue posible consultar esta fuente.';
-    case 'not_queried': return 'No se consultó esta fuente.';
-    default: return 'No hay información disponible sobre esta fuente.';
-  }
-}
-
-const verdicts: Record<string, { title: string; message: string; color: string }> = {
-  peligroso: { title: 'Peligroso', message: 'El análisis encontró señales de riesgo. Evita abrir este enlace.', color: colors.danger },
-  sospechoso: { title: 'Sospechoso', message: 'Se observaron señales que requieren precaución.', color: colors.warning },
-  sin_amenazas_detectadas: { title: 'Sin amenazas detectadas', message: 'No se detectaron amenazas en este análisis. Esto no garantiza que el sitio sea seguro.', color: colors.success },
+const verdicts: Record<string, { title: string; message: string; color: string; sandbox: string; tips: string[] }> = {
+  peligroso: { title: 'Peligroso', message: 'Esta página parece hecha para robar tus datos. No la abras.', color: colors.danger, sandbox: 'Peligro',
+    tips: ['No escribas tu contraseña ni datos de tarjeta.', 'Borra el mensaje y no lo reenvíes.', 'Si ya escribiste tus datos, cambia tu contraseña y llama a tu banco.'] },
+  sospechoso: { title: 'Sospechoso', message: 'Encontramos cosas raras. Mejor no escribas datos en esta página.', color: colors.warning, sandbox: 'Algo raro',
+    tips: ['No compartas datos personales en esta página.', 'Si dice ser de tu banco, entra mejor desde su app oficial.'] },
+  sin_amenazas_detectadas: { title: 'Sin amenazas detectadas', message: 'Abrimos la página en un lugar seguro y no hizo nada raro.', color: colors.success, sandbox: 'Nada raro',
+    tips: ['Aun así, desconfía si no esperabas este mensaje.', 'Nunca compartas códigos que te lleguen por SMS.'] },
 };
 const stateLabel: Record<string, string> = { received: 'Recibido', processing: 'En análisis', completed: 'Análisis completado', failed: 'No se pudo analizar', validation_failed: 'No se pudo validar el enlace', inconclusive: 'Resultado no concluyente' };
 const statusCopy: Record<string, { title: string; message: string; color: string; icon: string }> = {
@@ -142,7 +134,6 @@ export default function AnalysisDetailScreen() {
   const resultDate = detail?.completedAt && Number.isFinite(new Date(detail.completedAt).getTime())
     ? new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Mexico_City' }).format(new Date(detail.completedAt))
     : receivedDate;
-  const resultDateLabel = detail?.completedAt ? 'Analizado el' : 'Recibido el';
   const presentation = verdict ?? (detail ? statusCopy[detail.processingStatus] : undefined);
   const resultIcon = verdict
     ? verdict.title === 'Sin amenazas detectadas' ? '✓' : verdict.title === 'Peligroso' ? '×' : '!'
@@ -213,23 +204,94 @@ export default function AnalysisDetailScreen() {
                 </View>
               ) : (
                 <>
-                  <View style={[styles.verdictCard, styles.resultCard, { borderLeftColor: presentation?.color ?? colors.textSecondary }]}>
-                    <View style={[styles.resultIcon, { backgroundColor: `${presentation?.color ?? colors.textSecondary}22` }]}>
-                      <Text style={[styles.resultIconText, { color: presentation?.color ?? colors.textSecondary }]}>{resultIcon}</Text>
+                  <View style={[styles.hero, { borderColor: `${presentation?.color ?? colors.textSecondary}66`, backgroundColor: `${presentation?.color ?? colors.textSecondary}14` }]}>
+                    <View style={[styles.heroIcon, { backgroundColor: presentation?.color ?? colors.textSecondary }]}>
+                      <Text style={styles.heroIconText}>{resultIcon}</Text>
                     </View>
                     <Text accessibilityRole="header" style={[styles.verdict, { color: presentation?.color ?? colors.textSecondary }]}>{presentation?.title ?? stateLabel[detail.processingStatus] ?? 'Estado no disponible'}</Text>
-                    <Text style={styles.secondary}>{presentation?.message ?? 'No se presentó un veredicto.'}</Text>
-                    <Text style={styles.meta}>{verdict ? resultDateLabel : 'Recibido el'} {verdict ? resultDate : receivedDate}</Text>
+                    <Text style={styles.heroMessage}>{presentation?.message ?? 'No se presentó un veredicto.'}</Text>
+                    <View style={styles.domainChip}><Text style={styles.domain}>{hostOnly(detail.submittedInput) ?? 'Dominio no disponible'}</Text></View>
+                    <Text style={styles.meta}>{verdict ? `Revisado el ${resultDate}` : `Recibido el ${receivedDate}`}</Text>
                   </View>
-                  <View style={styles.section}>
-                    <Text style={styles.kicker}>ENLACE ANALIZADO</Text>
-                    <Text numberOfLines={2} style={styles.domain}>{hostOnly(detail.submittedInput) ?? 'Dominio no disponible'}</Text>
-                    <Text style={styles.helper}>Se muestra solo el dominio; no se exponen ruta ni parámetros del enlace.</Text>
-                  </View>
-                  {!!analysis?.reasons?.length && <View style={styles.section}><Text style={styles.sectionTitle}>Razones del análisis</Text>{analysis.reasons.map((reason, index) => <Text key={`${index}-${reason}`} style={styles.bullet}>•  {reason}</Text>)}</View>}
-                  {!!analysis && <View style={styles.section}><Text style={styles.sectionTitle}>Reputación externa · VirusTotal</Text><Text style={styles.helper}>{reputationLabel(analysis)}</Text><Text style={styles.helper}>Una fuente sin datos o sin detecciones no garantiza seguridad.</Text></View>}
-                  {!!analysis?.finalDestination && <View style={styles.section}><Text style={styles.sectionTitle}>Destino final observado</Text><Text style={styles.domain}>{hostOnly(analysis.finalDestination) ?? 'Destino no disponible'}</Text></View>}
-                  {!!analysis?.redirects?.length && <View style={styles.section}><Text style={styles.sectionTitle}>Redirecciones observadas</Text>{analysis.redirects.map((redirect, index) => <Text key={`${index}-${redirect}`} style={styles.domain}>{index + 1}. {hostOnly(redirect) ?? 'Destino no disponible'}</Text>)}</View>}
+                  {!!verdict && (
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>Lo revisamos de 2 formas</Text>
+                      <View style={styles.checksRow}>
+                        <View style={styles.checkTile}>
+                          <Text style={styles.checkLabel}>La abrimos en un lugar seguro</Text>
+                          <View style={[styles.statusPill, { backgroundColor: `${verdict.color}26` }]}><Text style={[styles.statusPillText, { color: verdict.color }]}>{verdict.sandbox}</Text></View>
+                        </View>
+                        {!!analysis && (() => {
+                          const reputation = reputationInfo(analysis.sourceResults, analysis.sourceFailures);
+                          const tone = reputation.tone === 'danger' ? colors.danger : reputation.tone === 'success' ? colors.success : colors.textSecondary;
+                          return (
+                            <View style={styles.checkTile}>
+                              <Text style={styles.checkLabel}>Preguntamos a los antivirus</Text>
+                              <View style={[styles.statusPill, { backgroundColor: `${tone}26` }]}><Text style={[styles.statusPillText, { color: tone }]}>{reputation.short}</Text></View>
+                            </View>
+                          );
+                        })()}
+                      </View>
+                    </View>
+                  )}
+                  {!!analysis?.reasons?.length && analysis.verdict !== 'sin_amenazas_detectadas' && (
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>{analysis.verdict === 'peligroso' ? 'Por qué es peligroso' : 'Lo que encontramos'}</Text>
+                      {analysis.reasons.map((reason, index) => {
+                        const friendly = friendlyReason(reason);
+                        return (
+                          <View key={`${index}-${reason}`} style={[styles.reasonItem, { borderLeftColor: presentation?.color ?? colors.warning }]}>
+                            <View style={[styles.reasonIcon, { backgroundColor: presentation?.color ?? colors.warning }]}>
+                              <Text style={styles.reasonIconText}>!</Text>
+                            </View>
+                            <View style={styles.reasonBody}>
+                              <Text style={styles.reasonTitle}>{friendly.title}</Text>
+                              <Text style={styles.reasonText}>{friendly.detail}</Text>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                  {!!verdict && (
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>Qué te recomendamos</Text>
+                      {verdict.tips.map((tip, index) => (
+                        <View key={tip} style={styles.tipRow}>
+                          <View style={[styles.tipNumber, { backgroundColor: `${verdict.color}26` }]}><Text style={[styles.tipNumberText, { color: verdict.color }]}>{index + 1}</Text></View>
+                          <Text style={styles.reasonText}>{tip}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  {!!analysis && !!accessToken && <AnalysisCapture key={detail.attemptId} attemptId={detail.attemptId} accessToken={accessToken} />}
+                  {!!analysis && (() => {
+                    const reputation = reputationInfo(analysis.sourceResults, analysis.sourceFailures);
+                    const tone = reputation.tone === 'danger' ? colors.danger : reputation.tone === 'success' ? colors.success : colors.textSecondary;
+                    return (
+                      <View style={[styles.section, { borderColor: `${tone}66` }]}>
+                        <View style={styles.rowBetween}>
+                          <Text style={styles.sectionTitle}>Antivirus</Text>
+                          <Text style={styles.sourceTag}>Fuente: VirusTotal</Text>
+                        </View>
+                        <View style={styles.vtRow}>
+                          <View style={[styles.vtIcon, { backgroundColor: tone }]}>
+                            <Text style={styles.heroIconText}>{reputation.tone === 'danger' ? '×' : reputation.tone === 'success' ? '✓' : 'i'}</Text>
+                          </View>
+                          <Text style={[styles.vtHeadline, { color: tone === colors.textSecondary ? colors.text : tone }]}>{reputation.headline}</Text>
+                        </View>
+                        <Text style={styles.reasonText}>{reputation.text}</Text>
+                        {!!reputation.checkedAt && <Text style={styles.helper}>Último informe: {reputation.checkedAt}</Text>}
+                      </View>
+                    );
+                  })()}
+                  {(!!analysis?.finalDestination && hostOnly(analysis.finalDestination) !== hostOnly(detail.submittedInput) || !!analysis?.redirects?.length) && (
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>A dónde te lleva</Text>
+                      {!!analysis?.finalDestination && <Text style={styles.domain}>Termina en: {hostOnly(analysis.finalDestination) ?? 'destino no disponible'}</Text>}
+                      {!!analysis?.redirects?.length && <Text style={styles.helper}>Pasa por: {analysis.redirects.map((redirect) => hostOnly(redirect) ?? '?').join(' → ')}</Text>}
+                    </View>
+                  )}
                   {!!actionError && <Text accessibilityRole="alert" style={styles.error}>{actionError}</Text>}
                   {detail.processingStatus === 'failed' ? (
                     <>
@@ -245,7 +307,7 @@ export default function AnalysisDetailScreen() {
                       <Pressable onPress={() => router.replace('/history')} accessibilityRole="button" style={styles.secondaryLink}><Text style={styles.action}>Ver en historial</Text></Pressable>
                     </>
                   )}
-                  <Text style={styles.disclaimer}>El resultado es informativo y no garantiza que un sitio sea seguro. Las señales del Sandbox y de reputación son independientes.</Text>
+                  <Text style={styles.disclaimer}>Este resultado es una guía. Ninguna revisión puede garantizar al 100 % que un sitio sea seguro.</Text>
                 </>
               )}
             </>
@@ -263,22 +325,43 @@ const styles = StyleSheet.create({
   back: { width: 36, height: 42, justifyContent: 'center' },
   backGlyph: { color: colors.text, fontSize: 32, lineHeight: 36 },
   headerSpacer: { width: 36 },
-  headerTitle: { color: colors.text, fontFamily: typefaces.semibold, fontSize: 16 },
+  headerTitle: { color: colors.text, fontFamily: typefaces.semibold, fontSize: 18 },
   content: { padding: 22, paddingTop: 25, gap: 14, paddingBottom: 28 },
-  kicker: { color: colors.primaryText, fontFamily: typefaces.semibold, fontSize: 11, letterSpacing: 1.4 },
-  verdictCard: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: 18, gap: 12 },
-  resultCard: { borderLeftWidth: 4, alignItems: 'flex-start' },
-  resultIcon: { width: 42, height: 42, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  resultIconText: { fontFamily: typefaces.bold, fontSize: 20 },
-  verdict: { color: colors.text, fontFamily: typefaces.bold, fontSize: 19 },
-  secondary: { color: colors.textSecondary, fontFamily: typefaces.regular, fontSize: 13, lineHeight: 20 },
-  meta: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 11, marginTop: 2 },
+  kicker: { color: colors.primaryText, fontFamily: typefaces.semibold, fontSize: 13, letterSpacing: 1.4 },
+  verdict: { color: colors.text, fontFamily: typefaces.bold, fontSize: 21 },
+  secondary: { color: colors.textSecondary, fontFamily: typefaces.regular, fontSize: 15, lineHeight: 23 },
+  meta: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 13, marginTop: 2 },
   section: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16, gap: 11 },
-  sectionTitle: { color: colors.text, fontFamily: typefaces.semibold, fontSize: 14 },
-  bullet: { color: colors.textSecondary, fontFamily: typefaces.regular, fontSize: 13, lineHeight: 20 },
-  domain: { color: colors.text, fontFamily: typefaces.medium, fontSize: 13 },
-  helper: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 11, lineHeight: 16 },
-  disclaimer: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 4 },
+  sectionTitle: { color: colors.text, fontFamily: typefaces.semibold, fontSize: 16 },
+  domainChip: { backgroundColor: colors.surfaceRaised, borderRadius: radius.pill, paddingHorizontal: 14, paddingVertical: 6 },
+  hero: { borderWidth: 1, borderRadius: radius.lg, padding: 20, gap: 10, alignItems: 'center' },
+  heroIcon: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+  heroIconText: { color: colors.white, fontFamily: typefaces.bold, fontSize: 30, lineHeight: 36 },
+  heroMessage: { color: colors.text, fontFamily: typefaces.medium, fontSize: 19, lineHeight: 26, textAlign: 'center' },
+  checksRow: { flexDirection: 'row', gap: 10 },
+  checkTile: { flex: 1, backgroundColor: colors.surfaceRaised, borderRadius: radius.sm, padding: 12, gap: 10, justifyContent: 'space-between' },
+  checkLabel: { color: colors.text, fontFamily: typefaces.medium, fontSize: 17, lineHeight: 23 },
+  statusPill: { alignSelf: 'flex-start', borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 6 },
+  statusPillText: { fontFamily: typefaces.bold, fontSize: 16 },
+  reasonBody: { flex: 1, gap: 4 },
+  reasonTitle: { color: colors.text, fontFamily: typefaces.semibold, fontSize: 18, lineHeight: 25 },
+  tipRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  tipNumber: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  tipNumberText: { fontFamily: typefaces.bold, fontSize: 14 },
+  vtRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  vtIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  vtHeadline: { flex: 1, fontFamily: typefaces.bold, fontSize: 20, lineHeight: 26 },
+  sourceTag: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 15 },
+  reasonItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: colors.surfaceRaised, borderRadius: radius.sm, borderLeftWidth: 3, padding: 12 },
+  reasonIcon: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  reasonIconText: { color: colors.white, fontFamily: typefaces.bold, fontSize: 16 },
+  reasonText: { flex: 1, color: colors.text, fontFamily: typefaces.regular, fontSize: 15, lineHeight: 23 },
+  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  chip: { borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4 },
+  chipText: { fontFamily: typefaces.semibold, fontSize: 13 },
+  domain: { color: colors.text, fontFamily: typefaces.medium, fontSize: 15 },
+  helper: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 13, lineHeight: 19 },
+  disclaimer: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 4 },
   loading: { padding: 30, alignItems: 'center', gap: 12 },
   processingContent: { alignItems: 'center', gap: 16, paddingTop: 10 },
   stepper: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
@@ -286,25 +369,25 @@ const styles = StyleSheet.create({
   stepDot: { width: 10, height: 10, borderRadius: 8, backgroundColor: colors.border },
   stepComplete: { backgroundColor: colors.success },
   stepActive: { backgroundColor: colors.primary, width: 13, height: 13 },
-  stepLabel: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 11 },
+  stepLabel: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 13 },
   stepLabelActive: { color: colors.primaryText, fontFamily: typefaces.semibold },
   progressBadge: { width: 92, height: 92, borderRadius: 48, borderColor: colors.primary, borderWidth: 2, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
-  processingTitle: { color: colors.text, fontFamily: typefaces.bold, fontSize: 21 },
-  processingHint: { color: colors.textSecondary, fontFamily: typefaces.regular, fontSize: 13, lineHeight: 19, textAlign: 'center', maxWidth: 300 },
-  timer: { color: colors.primaryText, fontFamily: typefaces.semibold, fontSize: 18, fontVariant: ['tabular-nums'] },
+  processingTitle: { color: colors.text, fontFamily: typefaces.bold, fontSize: 23 },
+  processingHint: { color: colors.textSecondary, fontFamily: typefaces.regular, fontSize: 15, lineHeight: 22, textAlign: 'center', maxWidth: 300 },
+  timer: { color: colors.primaryText, fontFamily: typefaces.semibold, fontSize: 20, fontVariant: ['tabular-nums'] },
   linkCard: { width: '100%', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16, gap: 8 },
   checklist: { alignSelf: 'stretch', gap: 12, paddingHorizontal: 10 },
-  checkItem: { color: colors.textSecondary, fontFamily: typefaces.medium, fontSize: 13 },
-  pendingItem: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 13 },
+  checkItem: { color: colors.textSecondary, fontFamily: typefaces.medium, fontSize: 15 },
+  pendingItem: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 15 },
   backgroundButton: { width: '100%', backgroundColor: colors.primaryAction, borderRadius: radius.md, paddingVertical: 15, alignItems: 'center', marginTop: 4 },
-  backgroundButtonText: { color: colors.white, fontFamily: typefaces.semibold, fontSize: 14 },
+  backgroundButtonText: { color: colors.white, fontFamily: typefaces.semibold, fontSize: 16 },
   primaryAction: { minHeight: 50, borderRadius: radius.md, backgroundColor: colors.primaryAction, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center' },
-  primaryActionText: { color: colors.white, fontFamily: typefaces.semibold, fontSize: 14 },
+  primaryActionText: { color: colors.white, fontFamily: typefaces.semibold, fontSize: 16 },
   secondaryAction: { minHeight: 48, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center' },
-  secondaryActionText: { color: colors.text, fontFamily: typefaces.semibold, fontSize: 14 },
+  secondaryActionText: { color: colors.text, fontFamily: typefaces.semibold, fontSize: 16 },
   secondaryLink: { minHeight: 40, alignItems: 'center', justifyContent: 'center' },
-  pollNote: { color: colors.warning, fontFamily: typefaces.regular, fontSize: 12, textAlign: 'center' },
+  pollNote: { color: colors.warning, fontFamily: typefaces.regular, fontSize: 14, textAlign: 'center' },
   errorCard: { backgroundColor: '#3A202B', borderRadius: radius.md, padding: 14, gap: 10 },
-  error: { color: '#FF9BAA', fontFamily: typefaces.medium, fontSize: 13, lineHeight: 19 },
-  action: { color: colors.primaryText, fontFamily: typefaces.semibold, fontSize: 13 },
+  error: { color: '#FF9BAA', fontFamily: typefaces.medium, fontSize: 15, lineHeight: 22 },
+  action: { color: colors.primaryText, fontFamily: typefaces.semibold, fontSize: 15 },
 });

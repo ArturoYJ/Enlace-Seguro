@@ -29,7 +29,7 @@ const expirationListeners = new Set<(expired: boolean) => void>();
 let activeAccessToken: string | null = null;
 let refreshInFlight: Promise<RefreshOutcome> | null = null;
 
-function apiUrl(path: string): string {
+export function apiUrl(path: string): string {
   if (!API_BASE_URL) throw new Error('Configura EXPO_PUBLIC_API_URL con la URL base de la API (incluye /api/v1).');
   return `${API_BASE_URL}${path}`;
 }

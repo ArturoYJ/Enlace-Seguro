@@ -62,7 +62,7 @@ export function AuthField({ label, secret = false, leadingIcon, ...props }: Auth
 
 const styles = StyleSheet.create({
   field: { gap: 8 },
-  label: { color: colors.textSecondary, fontFamily: typefaces.medium, fontSize: 13 },
+  label: { color: colors.textSecondary, fontFamily: typefaces.medium, fontSize: 15 },
   inputWrap: { minHeight: 54, flexDirection: 'row', alignItems: 'center', borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceInput, paddingHorizontal: 14, gap: 10 },
-  input: { flex: 1, color: colors.text, fontFamily: typefaces.regular, fontSize: 15, paddingVertical: 14 },
+  input: { flex: 1, color: colors.text, fontFamily: typefaces.regular, fontSize: 17, paddingVertical: 14 },
 });
