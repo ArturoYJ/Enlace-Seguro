@@ -26,7 +26,7 @@ describe('AnalysisCapture', () => {
   it('quita el indicador de carga cuando la imagen llega', async () => {
     await render(<AnalysisCapture attemptId={attemptId} accessToken="token-123" />);
     await act(async () => { fireEvent(screen.getByTestId('analysis-capture-image'), 'load'); });
-    expect(screen.getByText('Captura del sitio')).toBeTruthy();
+    expect(screen.getByText('Así se veía la página')).toBeTruthy();
     expect(screen.queryByTestId('analysis-capture-loading')).toBeNull();
   });
 });

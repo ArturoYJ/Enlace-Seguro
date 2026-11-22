@@ -7,6 +7,7 @@ import { useAnalysisStatusAnnouncement } from '../../lib/useAnalysisStatusAnnoun
 import { analysisDetailErrorMessage } from '../../lib/analysisErrorMessage';
 import { colors, radius, typefaces } from '../../theme/tokens';
 import { AnalysisCapture } from '../../components/AnalysisCapture';
+import { reputationInfo } from '../../lib/reputationSummary';
 
 type AnalysisDetail = {
   attemptId: string;
@@ -19,20 +20,6 @@ type AnalysisDetail = {
     sourceResults?: { sourceName: string; status: string; summary?: string }[];
     sourceFailures?: { sourceName: string; reasonCode: string }[] };
 };
-
-function reputationLabel(analysis: NonNullable<AnalysisDetail['analysis']>): string {
-  const result = analysis.sourceResults?.find((item) => item.sourceName === 'VirusTotal');
-  if (result?.status === 'match') return `Se encontraron detecciones. ${result.summary ?? ''}`;
-  if (result?.status === 'no_match') return `Sin detecciones en el informe consultado. ${result.summary ?? ''}`;
-  const failure = analysis.sourceFailures?.find((item) => item.sourceName === 'VirusTotal');
-  switch (failure?.reasonCode) {
-    case 'not_found': return 'No hay un informe disponible para este enlace.';
-    case 'rate_limited': return 'Consulta no disponible por límite de solicitudes.';
-    case 'error': return 'No fue posible consultar esta fuente.';
-    case 'not_queried': return 'No se consultó esta fuente.';
-    default: return 'No hay información disponible sobre esta fuente.';
-  }
-}
 
 const verdicts: Record<string, { title: string; message: string; color: string }> = {
   peligroso: { title: 'Peligroso', message: 'El análisis encontró señales de riesgo. Evita abrir este enlace.', color: colors.danger },
@@ -222,16 +209,41 @@ export default function AnalysisDetailScreen() {
                     <Text style={styles.secondary}>{presentation?.message ?? 'No se presentó un veredicto.'}</Text>
                     <Text style={styles.meta}>{verdict ? resultDateLabel : 'Recibido el'} {verdict ? resultDate : receivedDate}</Text>
                   </View>
+                  {!!analysis?.reasons?.length && (
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>{analysis.verdict === 'peligroso' ? 'Por qué es peligroso' : 'Qué encontramos'}</Text>
+                      {analysis.reasons.map((reason, index) => (
+                        <View key={`${index}-${reason}`} style={[styles.reasonItem, { borderLeftColor: presentation?.color ?? colors.warning }]}>
+                          <View style={[styles.reasonIcon, { backgroundColor: `${presentation?.color ?? colors.warning}26` }]}>
+                            <Text style={[styles.reasonIconText, { color: presentation?.color ?? colors.warning }]}>!</Text>
+                          </View>
+                          <Text style={styles.reasonText}>{reason}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  {!!analysis && !!accessToken && <AnalysisCapture key={detail.attemptId} attemptId={detail.attemptId} accessToken={accessToken} />}
+                  {!!analysis && (() => {
+                    const reputation = reputationInfo(analysis.sourceResults, analysis.sourceFailures);
+                    const tone = reputation.tone === 'danger' ? colors.danger : reputation.tone === 'success' ? colors.success : colors.textSecondary;
+                    return (
+                      <View style={styles.section}>
+                        <View style={styles.rowBetween}>
+                          <Text style={styles.sectionTitle}>Reputación en VirusTotal</Text>
+                          <View style={[styles.chip, { backgroundColor: `${tone}22` }]}><Text style={[styles.chipText, { color: tone }]}>{reputation.chip}</Text></View>
+                        </View>
+                        <Text style={styles.reasonText}>{reputation.text}</Text>
+                        <Text style={styles.helper}>VirusTotal reúne lo que otros antivirus ya saben. Un sitio nuevo puede no estar reportado aunque sea peligroso; por eso también lo revisa nuestro entorno aislado.</Text>
+                      </View>
+                    );
+                  })()}
                   <View style={styles.section}>
                     <Text style={styles.kicker}>ENLACE ANALIZADO</Text>
                     <Text numberOfLines={2} style={styles.domain}>{hostOnly(detail.submittedInput) ?? 'Dominio no disponible'}</Text>
+                    {!!analysis?.finalDestination && hostOnly(analysis.finalDestination) !== hostOnly(detail.submittedInput) && <Text style={styles.helper}>Terminó en: {hostOnly(analysis.finalDestination) ?? 'destino no disponible'}</Text>}
+                    {!!analysis?.redirects?.length && <Text style={styles.helper}>Redirecciones: {analysis.redirects.map((redirect) => hostOnly(redirect) ?? '?').join(' → ')}</Text>}
                     <Text style={styles.helper}>Se muestra solo el dominio; no se exponen ruta ni parámetros del enlace.</Text>
                   </View>
-                  {!!analysis?.reasons?.length && <View style={styles.section}><Text style={styles.sectionTitle}>Razones del análisis</Text>{analysis.reasons.map((reason, index) => <Text key={`${index}-${reason}`} style={styles.bullet}>•  {reason}</Text>)}</View>}
-                  {!!analysis && <View style={styles.section}><Text style={styles.sectionTitle}>Reputación externa · VirusTotal</Text><Text style={styles.helper}>{reputationLabel(analysis)}</Text><Text style={styles.helper}>Una fuente sin datos o sin detecciones no garantiza seguridad.</Text></View>}
-                  {!!analysis && !!accessToken && <AnalysisCapture key={detail.attemptId} attemptId={detail.attemptId} accessToken={accessToken} />}
-                  {!!analysis?.finalDestination && <View style={styles.section}><Text style={styles.sectionTitle}>Destino final observado</Text><Text style={styles.domain}>{hostOnly(analysis.finalDestination) ?? 'Destino no disponible'}</Text></View>}
-                  {!!analysis?.redirects?.length && <View style={styles.section}><Text style={styles.sectionTitle}>Redirecciones observadas</Text>{analysis.redirects.map((redirect, index) => <Text key={`${index}-${redirect}`} style={styles.domain}>{index + 1}. {hostOnly(redirect) ?? 'Destino no disponible'}</Text>)}</View>}
                   {!!actionError && <Text accessibilityRole="alert" style={styles.error}>{actionError}</Text>}
                   {detail.processingStatus === 'failed' ? (
                     <>
@@ -277,7 +289,13 @@ const styles = StyleSheet.create({
   meta: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 11, marginTop: 2 },
   section: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 16, gap: 11 },
   sectionTitle: { color: colors.text, fontFamily: typefaces.semibold, fontSize: 14 },
-  bullet: { color: colors.textSecondary, fontFamily: typefaces.regular, fontSize: 13, lineHeight: 20 },
+  reasonItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, backgroundColor: colors.surfaceRaised, borderRadius: radius.sm, borderLeftWidth: 3, padding: 12 },
+  reasonIcon: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  reasonIconText: { fontFamily: typefaces.bold, fontSize: 13 },
+  reasonText: { flex: 1, color: colors.text, fontFamily: typefaces.regular, fontSize: 13, lineHeight: 20 },
+  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  chip: { borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4 },
+  chipText: { fontFamily: typefaces.semibold, fontSize: 11 },
   domain: { color: colors.text, fontFamily: typefaces.medium, fontSize: 13 },
   helper: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 11, lineHeight: 16 },
   disclaimer: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 4 },
