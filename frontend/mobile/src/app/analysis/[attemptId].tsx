@@ -6,6 +6,7 @@ import { authenticatedRequest, useSession } from '../../lib/session';
 import { useAnalysisStatusAnnouncement } from '../../lib/useAnalysisStatusAnnouncement';
 import { analysisDetailErrorMessage } from '../../lib/analysisErrorMessage';
 import { colors, radius, typefaces } from '../../theme/tokens';
+import { AnalysisCapture } from '../../components/AnalysisCapture';
 
 type AnalysisDetail = {
   attemptId: string;
@@ -228,6 +229,7 @@ export default function AnalysisDetailScreen() {
                   </View>
                   {!!analysis?.reasons?.length && <View style={styles.section}><Text style={styles.sectionTitle}>Razones del análisis</Text>{analysis.reasons.map((reason, index) => <Text key={`${index}-${reason}`} style={styles.bullet}>•  {reason}</Text>)}</View>}
                   {!!analysis && <View style={styles.section}><Text style={styles.sectionTitle}>Reputación externa · VirusTotal</Text><Text style={styles.helper}>{reputationLabel(analysis)}</Text><Text style={styles.helper}>Una fuente sin datos o sin detecciones no garantiza seguridad.</Text></View>}
+                  {!!analysis && !!accessToken && <AnalysisCapture key={detail.attemptId} attemptId={detail.attemptId} accessToken={accessToken} />}
                   {!!analysis?.finalDestination && <View style={styles.section}><Text style={styles.sectionTitle}>Destino final observado</Text><Text style={styles.domain}>{hostOnly(analysis.finalDestination) ?? 'Destino no disponible'}</Text></View>}
                   {!!analysis?.redirects?.length && <View style={styles.section}><Text style={styles.sectionTitle}>Redirecciones observadas</Text>{analysis.redirects.map((redirect, index) => <Text key={`${index}-${redirect}`} style={styles.domain}>{index + 1}. {hostOnly(redirect) ?? 'Destino no disponible'}</Text>)}</View>}
                   {!!actionError && <Text accessibilityRole="alert" style={styles.error}>{actionError}</Text>}
