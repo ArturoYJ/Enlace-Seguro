@@ -59,3 +59,35 @@ describe('LocalScreenshotStorage attempt identifier handling', () => {
     }
   });
 });
+
+describe('LocalScreenshotStorage sin O_NOFOLLOW (como en Windows)', () => {
+  const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPVP8 ')]);
+  const attemptId = '1f2e3d4c-5b6a-4789-8abc-def012345678';
+
+  it('guarda y lee la captura', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'enlaceseguro-captures-'));
+    try {
+      const storage = new LocalScreenshotStorage(dir, 0);
+      assert.equal(await storage.saveScreenshot(attemptId, webp), `local://captures/${attemptId}.webp`);
+      assert.deepEqual(await storage.getScreenshot(attemptId), webp);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('no escribe ni lee a través de un enlace simbólico', { skip: process.platform === 'win32' }, async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'enlaceseguro-captures-'));
+    const outside = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'enlaceseguro-outside-')), 'target.webp');
+    try {
+      await fs.writeFile(outside, webp);
+      await fs.symlink(outside, path.join(dir, `${attemptId}.webp`));
+      const storage = new LocalScreenshotStorage(dir, 0);
+      await assert.rejects(storage.saveScreenshot(attemptId, Buffer.concat([webp, Buffer.from('x')])), /symbolic link/);
+      assert.equal(await storage.getScreenshot(attemptId), null);
+      assert.deepEqual(await fs.readFile(outside), webp);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+      await fs.rm(path.dirname(outside), { recursive: true, force: true });
+    }
+  });
+});
