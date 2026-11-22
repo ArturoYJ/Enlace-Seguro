@@ -8,6 +8,7 @@ describe('UrlHeuristics', () => {
     assert.equal(registrableDomain('www.bbva.mx'), 'bbva.mx');
     assert.equal(registrableDomain('portal.sat.gob.mx'), 'sat.gob.mx');
     assert.equal(registrableDomain('login.banorte.com.mx'), 'banorte.com.mx');
+    assert.equal(registrableDomain('127.0.0.1'), '127.0.0.1');
   });
 
   it('marca una marca conocida dentro de un dominio que no es el suyo', () => {

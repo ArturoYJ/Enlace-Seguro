@@ -74,6 +74,26 @@ export class VerdictEvaluator {
       reasons.push('La página intentó desencadenar la descarga automática de archivos sin consentimiento.');
     }
 
+    // Resultados de la prueba con credenciales inventadas (CredentialProbe).
+    // Mandar el login a otro dominio también lo hacen servicios legítimos (Auth0, Okta). Solo cuenta como
+    // peligroso si además hay engaño en la URL o la página lleva a otro sitio después del envío.
+    const exfiltration = signals.includes('credential_exfiltration_detected');
+    const exfiltrationIsDangerous = exfiltration && (urlSignals.length > 0 || signals.includes('post_login_redirect_to_other_site'));
+    if (exfiltrationIsDangerous) {
+      reasons.push('Al enviar datos de acceso inventados, la página los mandó a un dominio distinto al suyo.');
+      if (signals.includes('post_login_redirect_to_other_site')) {
+        reasons.push('Después de enviar el formulario de acceso, la página llevó a otro sitio, un patrón usado para ocultar el robo de datos.');
+      }
+    }
+
+    if (signals.includes('requests_card_data_after_login')) {
+      reasons.push('La página aceptó datos de acceso inventados y después pidió datos de tarjeta.');
+    }
+
+    if (signals.includes('requests_security_code_after_login')) {
+      reasons.push('La página aceptó datos de acceso inventados y después pidió un código de seguridad o NIP.');
+    }
+
     if (reasons.length > 0) {
       reasons.push(...urlReasons);
       return {
@@ -109,6 +129,14 @@ export class VerdictEvaluator {
 
     if (signals.includes('cross_origin_form_action')) {
       reasons.push('Los formularios de la página envían datos hacia un dominio externo no coincidente.');
+    }
+
+    if (exfiltration && !exfiltrationIsDangerous) {
+      reasons.push('Al enviar datos de acceso inventados, la página los mandó a un dominio distinto al suyo.');
+    }
+
+    if (signals.includes('post_login_redirect_to_other_site')) {
+      reasons.push('Después de enviar el formulario de acceso, la página llevó a otro sitio, un patrón usado para ocultar el robo de datos.');
     }
 
     // Señales de la URL (extensión de abuso, IP, punycode, marca en dominio ajeno).

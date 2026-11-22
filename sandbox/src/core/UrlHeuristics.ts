@@ -49,6 +49,8 @@ function isIpLiteral(hostname: string): boolean {
 
 /** Devuelve la parte del dominio que se compra (ej. "bbva.mx", "sat.gob.mx"). */
 export function registrableDomain(hostname: string): string {
+  // Una IP no tiene dominio registrable: se compara completa.
+  if (isIpLiteral(hostname)) return hostname;
   const labels = hostname.split('.');
   if (labels.length <= 2) return hostname;
   const lastTwo = labels.slice(-2).join('.');
