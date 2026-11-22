@@ -18,7 +18,14 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.enlaceseguro"
+      "package": "com.anonymous.enlaceseguro",
+      "allowBackup": false,
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.VIBRATE"
+      ]
     },
     "web": {
       "output": "static",
@@ -41,11 +48,11 @@
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true,
             "enableMinifyInReleaseBuilds": false
           }
         }
-      ]
+      ],
+      "./plugins/withAndroidHardening"
     ],
     "experiments": {
       "typedRoutes": true,
