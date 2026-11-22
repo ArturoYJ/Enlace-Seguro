@@ -16,25 +16,32 @@ for var in SYSTEMROOT WINDIR TEMP TMP USERPROFILE; do
   if [[ -n "${!var:-}" ]]; then platform_env+=("$var=${!var}"); fi
 done
 
-# Estado del puerto 3000 de la API: 0 = alguien escucha, 1 = libre, 2 = no se pudo comprobar.
+# Estado del puerto de la API (ENLACESEGURO_API_PORT, 3000 por defecto):
+# 0 = alguien escucha, 1 = libre, 2 = no se pudo comprobar.
 # Usa lsof si existe (macOS, Linux). Si no existe, como en Git Bash de Windows, intenta conectarse
 # con Node: solo "conexión rechazada" cuenta como libre; cualquier otro error cuenta como no comprobado.
+# Un puerto que no sea un número entre 1 y 65535 cuenta como no comprobado, nunca como libre.
 api_port_status() {
+  local port="${ENLACESEGURO_API_PORT:-3000}"
+  if [[ ! "$port" =~ ^[0-9]{1,5}$ ]] || (( 10#$port < 1 || 10#$port > 65535 )); then
+    return 2
+  fi
+  port=$((10#$port))
   if command -v lsof >/dev/null 2>&1; then
     local lsof_error status=0
-    lsof_error="$(lsof -nP -iTCP:3000 -sTCP:LISTEN 2>&1 >/dev/null)" || status=$?
+    lsof_error="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>&1 >/dev/null)" || status=$?
     if [[ $status -eq 0 ]]; then return 0; fi
     if [[ $status -eq 1 && -z "$lsof_error" ]]; then return 1; fi
     return 2
   fi
   local status=0
   node -e '
-    const socket = require("node:net").connect({ host: "127.0.0.1", port: 3000 });
+    const socket = require("node:net").connect({ host: "127.0.0.1", port: Number(process.argv[1]) });
     socket.setTimeout(2000);
     socket.on("connect", () => { socket.destroy(); process.exit(0); });
     socket.on("timeout", () => { socket.destroy(); process.exit(2); });
     socket.on("error", (error) => process.exit(error.code === "ECONNREFUSED" ? 1 : 2));
-  ' || status=$?
+  ' "$port" || status=$?
   return "$status"
 }
 

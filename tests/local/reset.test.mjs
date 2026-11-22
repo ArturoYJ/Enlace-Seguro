@@ -119,27 +119,49 @@ function windowsBase() {
 }
 
 // Git Bash en Windows no trae lsof: la comprobación del puerto cae a una conexión con Node.
-function platformProbe(t, script, extraPath = []) {
+function platformProbe(t, script, extraPath = [], extraEnv = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'enlaceseguro-platform-test-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   for (const [name, body] of extraPath) writeFileSync(join(dir, name), body, { mode: 0o755 });
   // PATH reducido a la carpeta temporal y la de Node: así no se encuentran lsof ni cygpath reales.
   return spawnSync(bashPath, ['-c', `root=/repo; source "$1"; ${script}`, 'test', resolve('scripts/local/_platform.sh')], {
     encoding: 'utf8',
-    env: { ...windowsBase(), PATH: [dir, dirname(process.execPath)].join(delimiter), HOME: process.env.HOME ?? '' },
+    env: { ...windowsBase(), PATH: [dir, dirname(process.execPath)].join(delimiter), HOME: process.env.HOME ?? '', ...extraEnv },
   });
 }
 
-test('sin lsof, la comprobación con Node distingue puerto libre y ocupado', async (t) => {
+// Abre un servidor en un puerto libre que asigna el sistema operativo.
+async function listenOnRandomPort(t) {
   const { createServer } = await import('node:net');
-  const free = platformProbe(t, 'status=0; api_port_status || status=$?; echo "$status"');
-  assert.equal(free.stdout.trim(), '1', free.stderr);
-
-  const server = createServer().listen(3000, '127.0.0.1');
+  const server = createServer().listen(0, '127.0.0.1');
   await new Promise((done) => server.once('listening', done));
   t.after(() => server.close());
-  const busy = await new Promise((done) => setImmediate(() => done(platformProbe(t, 'status=0; api_port_status || status=$?; echo "$status"'))));
+  return server;
+}
+
+const portStatusScript = 'status=0; api_port_status || status=$?; echo "$status"';
+
+// spawnSync bloquea el event loop: se lanza en setImmediate para que el servidor ya acepte conexiones.
+const probeAsync = (t, port) => new Promise((done) => setImmediate(() => done(platformProbe(t, portStatusScript, [], { ENLACESEGURO_API_PORT: String(port) }))));
+
+test('sin lsof, la comprobación con Node distingue puerto libre y ocupado', async (t) => {
+  // Un puerto recién liberado no tiene a nadie escuchando, aunque el 3000 esté ocupado en la máquina.
+  const released = await listenOnRandomPort(t);
+  const freePort = released.address().port;
+  await new Promise((done) => released.close(done));
+  const free = await probeAsync(t, freePort);
+  assert.equal(free.stdout.trim(), '1', free.stderr);
+
+  const busyPort = (await listenOnRandomPort(t)).address().port;
+  const busy = await probeAsync(t, busyPort);
   assert.equal(busy.stdout.trim(), '0', busy.stderr);
+});
+
+test('un puerto inválido en ENLACESEGURO_API_PORT cuenta como no comprobado', (t) => {
+  for (const port of ['abc', '0', '70000', '3000; echo x']) {
+    const result = platformProbe(t, portStatusScript, [], { ENLACESEGURO_API_PORT: port });
+    assert.equal(result.stdout.trim(), '2', `${port}: ${result.stderr}`);
+  }
 });
 
 test('en Git Bash convierte la raíz a C:/... y desactiva la conversión automática de rutas', (t) => {
