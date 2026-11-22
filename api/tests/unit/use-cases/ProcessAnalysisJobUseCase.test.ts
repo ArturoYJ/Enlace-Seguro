@@ -55,6 +55,26 @@ describe('ProcessAnalysisJobUseCase', () => {
     }
   });
 
+  it('si el sandbox encontró riesgo y los antivirus no, lo explica y conserva el veredicto del sandbox', async () => {
+    for (const status of ['no_match', 'not_found'] as const) {
+      const daily = new MockDailyAnalysisRepository(); const audit = new MockSecurityAuditRepository();
+      const sandbox = { analyze: async (attemptId: string) => ({ outcome: 'completed' as const, attemptId,
+        targetUrl: 'https://example.test/', finalDestination: 'https://example.test/', redirects: [], signals: [],
+        verdict: 'peligroso' as const, reasons: ['Pide tarjeta.'], sourceResults: [] }), isHealthy: async () => true };
+      const provider = { check: async () => status === 'no_match'
+        ? { status, malicious: 0, checkedAt: new Date(), reportAt: new Date('2026-01-01T00:00:00Z'), scope: 'domain' as const, domain: 'example.test' }
+        : { status } };
+      await daily.admitAttemptAtomic('user-1', '2026-11-03', attempt('attempt-disfrazado'));
+      const claimed = await daily.claimNextAnalysisJob('worker', new Date(), 60_000); assert.ok(claimed);
+      await new ProcessAnalysisJobUseCase(daily, audit, sandbox, 4, provider).execute(claimed);
+      const analysis = (await daily.findAttemptByLocalKey('user-1', '2026-11-03', 'attempt-disfrazado'))?.attempt.analysis;
+      assert.equal(analysis?.verdict, 'peligroso');
+      assert.equal(analysis?.reasons[0], 'Pide tarjeta.');
+      assert.match(analysis?.reasons.at(-1) ?? '', /todavía no reportan este enlace/);
+      if (status === 'no_match') assert.match(analysis?.sourceResults[0]?.summary ?? '', /^Informe del dominio example\.test del /);
+    }
+  });
+
   it('records unavailable VirusTotal without reporting a match or changing the Sandbox verdict', async () => {
     for (const status of ['not_queried', 'not_found', 'rate_limited', 'error'] as const) {
       const daily = new MockDailyAnalysisRepository(); const audit = new MockSecurityAuditRepository();

@@ -1,5 +1,7 @@
 export type ReputationResult =
-  | { status: 'match' | 'no_match'; checkedAt: Date; reportAt: Date; malicious: number }
+  | { status: 'match' | 'no_match'; checkedAt: Date; reportAt: Date; malicious: number;
+      /** 'url' = informe del enlace exacto (lista autorizada); 'domain' = informe solo del dominio. */
+      scope?: 'url' | 'domain'; domain?: string }
   | { status: 'not_found' | 'not_queried' | 'rate_limited' | 'error'; checkedAt?: Date };
 
 export interface IReputationProvider {

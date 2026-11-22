@@ -69,9 +69,14 @@ export class ProcessAnalysisJobUseCase {
       const hasReport = reputation.status === 'match' || reputation.status === 'no_match';
       const verdict = reputation.status === 'match' && result.verdict === 'sin_amenazas_detectadas'
         ? 'sospechoso' : result.verdict;
+      // El sandbox tiene prioridad: es el que abrió e interactuó con la página. Si encontró peligro y
+      // los antivirus no, se explica que el sitio puede ser nuevo o estar bien disfrazado.
+      const sandboxFoundRisk = result.verdict === 'peligroso' || result.verdict === 'sospechoso';
       const reasons = reputation.status === 'match'
         ? [`VirusTotal reportó ${reputation.malicious} detección(es) maliciosa(s); el resultado requiere revisión.`, ...result.reasons].slice(0, 10)
-        : result.reasons.slice(0, 10);
+        : sandboxFoundRisk && (reputation.status === 'no_match' || reputation.status === 'not_found')
+          ? [...result.reasons.slice(0, 9), 'Los antivirus de VirusTotal todavía no reportan este enlace, pero el entorno aislado sí encontró riesgo: puede ser un sitio nuevo o bien disfrazado.']
+          : result.reasons.slice(0, 10);
 
       // 3. Format structured AnalysisPayload
       const analysis: AnalysisPayload = {
@@ -80,8 +85,10 @@ export class ProcessAnalysisJobUseCase {
         finalDestination: result.finalDestination.slice(0, 8192),
         sourceResults: (reputation.status === 'match' || reputation.status === 'no_match') ? [...result.sourceResults, {
           sourceName: 'VirusTotal', status: reputation.status, checkedAt: reputation.checkedAt,
-          expiresAt: new Date(reputation.reportAt.getTime() + 24 * 60 * 60 * 1000), resultCode: reputation.status,
-          summary: `Informe del ${reputation.reportAt.toISOString()}; detecciones maliciosas: ${reputation.malicious}.`
+          expiresAt: new Date(reputation.checkedAt.getTime() + 24 * 60 * 60 * 1000), resultCode: reputation.status,
+          summary: reputation.scope === 'domain'
+            ? `Informe del dominio ${reputation.domain ?? ''} del ${reputation.reportAt.toISOString()}; detecciones maliciosas: ${reputation.malicious}.`
+            : `Informe del ${reputation.reportAt.toISOString()}; detecciones maliciosas: ${reputation.malicious}.`
         }] : result.sourceResults,
         sourceFailures: hasReport ? [] : [{ sourceName: 'VirusTotal', reasonCode: reputation.status }],
         signals: result.signals.slice(0, 50),
