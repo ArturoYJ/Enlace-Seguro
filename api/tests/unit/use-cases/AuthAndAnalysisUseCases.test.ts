@@ -16,7 +16,6 @@ import { JwtTokenService } from '../../../src/infrastructure/security/JwtTokenSe
 import {
   EmailAlreadyExistsError,
   InvalidCredentialsError,
-  TokenExpiredOrInvalidError,
   TokenReuseDetectedError,
   QuotaExceededError,
   ValidationError,
@@ -144,7 +143,7 @@ describe('Auth & Analysis Use Cases', () => {
   describe('RefreshTokenUseCase', () => {
     it('should rotate valid refresh token issuing a new pair and revoking the old token', async () => {
       const registerUseCase = new RegisterUserUseCase(userRepo, auditRepo, hasher);
-      const user = await registerUseCase.execute({
+      await registerUseCase.execute({
         email: 'refresh@example.com',
         password: 'Password123!'
       });

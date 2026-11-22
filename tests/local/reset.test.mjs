@@ -7,18 +7,29 @@ import { test } from 'node:test';
 
 const reset = resolve('scripts/local/reset');
 
-test('reset and migrate fail closed when lsof cannot execute', () => {
+// Ejecuta reset o migrate con lsof y docker falsos en una carpeta temporal al inicio del PATH.
+// Se lanza el script directamente con bash (sin bash -c ni comandos armados con texto).
+function runWithMockedTools(t, script, lsofBody) {
+  const dir = mkdtempSync(join(tmpdir(), 'enlaceseguro-mock-tools-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, 'lsof'), `#!/bin/sh\n${lsofBody}\n`, { mode: 0o755 });
+  writeFileSync(join(dir, 'docker'), '#!/bin/sh\necho DOCKER_CALLED >&2\nexit 1\n', { mode: 0o755 });
+  const args = script.endsWith('reset') ? [resolve(script), '--confirm'] : [resolve(script)];
+  return spawnSync('bash', args, { encoding: 'utf8', env: { ...process.env, PATH: `${dir}${delimiter}${process.env.PATH}` } });
+}
+
+test('reset and migrate fail closed when lsof cannot execute', (t) => {
   for (const script of ['scripts/local/reset', 'scripts/local/migrate']) {
-    const result = spawnSync('bash', ['-c', `lsof(){ return 127; }; docker(){ echo DOCKER_CALLED >&2; return 1; }; export -f lsof docker; bash "$1" "${script.endsWith('reset') ? '--confirm' : ''}"`, 'test', resolve(script)], { encoding: 'utf8' });
+    const result = runWithMockedTools(t, script, 'exit 127');
     assert.notEqual(result.status, 0, script);
     assert.doesNotMatch(result.stderr, /DOCKER_CALLED/, script);
   }
 });
 
-test('port checks block an active API and permit the no-listener branch', () => {
+test('port checks block an active API and permit the no-listener branch', (t) => {
   for (const script of ['scripts/local/reset', 'scripts/local/migrate']) {
     for (const code of [0, 1]) {
-      const result = spawnSync('bash', ['-c', `lsof(){ return ${code}; }; docker(){ echo DOCKER_CALLED >&2; return 1; }; export -f lsof docker; bash "$1" "${script.endsWith('reset') ? '--confirm' : ''}"`, 'test', resolve(script)], { encoding: 'utf8' });
+      const result = runWithMockedTools(t, script, `exit ${code}`);
       assert.notEqual(result.status, 0, script);
       if (code === 0) assert.doesNotMatch(result.stderr, /DOCKER_CALLED/, script);
       else assert.match(result.stderr, /DOCKER_CALLED/, script);
@@ -26,9 +37,9 @@ test('port checks block an active API and permit the no-listener branch', () => 
   }
 });
 
-test('reset and migrate reject lsof errors even when it returns one', () => {
+test('reset and migrate reject lsof errors even when it returns one', (t) => {
   for (const script of ['scripts/local/reset', 'scripts/local/migrate']) {
-    const result = spawnSync('bash', ['-c', `lsof(){ echo 'simulated failure' >&2; return 1; }; docker(){ echo DOCKER_CALLED >&2; return 1; }; export -f lsof docker; bash "$1" "${script.endsWith('reset') ? '--confirm' : ''}"`, 'test', resolve(script)], { encoding: 'utf8' });
+    const result = runWithMockedTools(t, script, "echo 'simulated failure' >&2\nexit 1");
     assert.notEqual(result.status, 0, script);
     assert.doesNotMatch(result.stderr, /DOCKER_CALLED/, script);
   }
@@ -124,7 +135,9 @@ function platformProbe(t, script, extraPath = [], extraEnv = {}) {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   for (const [name, body] of extraPath) writeFileSync(join(dir, name), body, { mode: 0o755 });
   // PATH reducido a la carpeta temporal y la de Node: así no se encuentran lsof ni cygpath reales.
-  return spawnSync(bashPath, ['-c', `root=/repo; source "$1"; ${script}`, 'test', resolve('scripts/local/_platform.sh')], {
+  const probeFile = join(dir, 'probe.sh');
+  writeFileSync(probeFile, `root=/repo\nsource "$1"\n${script}\n`);
+  return spawnSync(bashPath, [probeFile, resolve('scripts/local/_platform.sh')], {
     encoding: 'utf8',
     env: { ...windowsBase(), PATH: [dir, dirname(process.execPath)].join(delimiter), HOME: process.env.HOME ?? '', ...extraEnv },
   });

@@ -14,7 +14,7 @@ describe('UrlHeuristics', () => {
   it('marca una marca conocida dentro de un dominio que no es el suyo', () => {
     const r = analyzeUrl('https://bbva-mx-verificacion.com/acceso');
     assert.ok(r.signals.includes('brand_impersonation'));
-    assert.ok(r.reasons.some((x) => x.includes('bbva-mx-verificacion.com')));
+    assert.deepEqual(r.reasons, ['El nombre "bbva" aparece en el enlace, pero el dominio real es "bbva-mx-verificacion.com".']);
   });
 
   it('no marca el dominio oficial de la marca ni sus subdominios', () => {
@@ -77,7 +77,7 @@ describe('VerdictEvaluator con señales de URL', () => {
       signals: []
     });
     assert.equal(result.verdict, 'sospechoso');
-    assert.ok(result.reasons.some((r) => r.includes('paypal-reembolso.com')));
+    assert.ok(result.reasons.includes('El nombre "paypal" aparece en el enlace, pero el dominio real es "paypal-reembolso.com".'));
   });
 
   it('revisa también el destino final después de redirecciones', () => {
