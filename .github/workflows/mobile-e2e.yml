@@ -55,6 +55,13 @@ jobs:
           npm ci --prefix sandbox
           npm ci --prefix frontend/mobile
 
+      # Without access to /dev/kvm the emulator falls back to -accel off, which API 36 images refuse to boot.
+      - name: Enable KVM for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Build and run Android API 36 emulator E2E
         uses: reactivecircus/android-emulator-runner@v2
         with:
