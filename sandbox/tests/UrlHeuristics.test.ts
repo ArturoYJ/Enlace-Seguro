@@ -30,7 +30,13 @@ describe('UrlHeuristics', () => {
 
   it('marca extensiones de abuso, IP directa y punycode', () => {
     assert.ok(analyzeUrl('https://entrega-paquete.top/').signals.includes('suspicious_tld'));
-    assert.deepEqual(analyzeUrl('http://203.0.113.7/login').signals, ['ip_literal_host']);
+    assert.deepEqual(analyzeUrl('http://1.1.1.1/login').signals, ['ip_literal_host']);
+  });
+
+  it('no marca IPs privadas ni de loopback (el filtro anti-SSRF ya las bloquea)', () => {
+    for (const url of ['http://127.0.0.1:8080/', 'http://192.168.1.10/', 'http://10.0.0.5/', 'http://[::1]:3000/']) {
+      assert.deepEqual(analyzeUrl(url).signals, [], url);
+    }
     assert.ok(analyzeUrl('https://xn--pypal-4ve.com/').signals.includes('punycode_domain'));
   });
 
