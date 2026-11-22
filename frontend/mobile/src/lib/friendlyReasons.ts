@@ -4,6 +4,8 @@
 export type FriendlyReason = { title: string; detail: string };
 
 const rules: { match: RegExp; title: string; detail: string }[] = [
+  { match: /todav[ií]a no reportan este enlace/i, title: 'Los antivirus no lo detectan, nosotros sí', detail: 'Puede ser un sitio nuevo o bien disfrazado. Confía en lo que vimos al abrirlo: el riesgo es real.' },
+  { match: /VirusTotal report[oó]/i, title: 'Los antivirus ya lo reportan', detail: 'Otros programas antivirus marcaron este enlace como dañino, aunque al abrirlo no vimos nada raro.' },
   { match: /recursos internos|anti-SSRF/i, title: 'Intenta entrar a redes privadas', detail: 'El enlace apunta a equipos internos que no deberían ser públicos.' },
   { match: /datos de tarjeta/i, title: 'Te pide los datos de tu tarjeta', detail: 'Después de iniciar sesión pide número de tarjeta y código de seguridad. Un banco real no lo hace así.' },
   { match: /c[oó]digo de seguridad o NIP/i, title: 'Te pide códigos o tu NIP', detail: 'Pide el código que te llega por SMS o tu NIP. Nadie confiable te lo pide por un enlace.' },

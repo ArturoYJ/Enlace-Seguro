@@ -29,21 +29,27 @@ function detections(summary?: string): number | undefined {
   return value === undefined ? undefined : Number(value);
 }
 
+function domainOf(summary?: string): string | undefined {
+  return summary?.match(/Informe del dominio (\S+) del/)?.[1];
+}
+
 export function reputationInfo(sourceResults?: SourceResult[], sourceFailures?: SourceFailure[]): ReputationInfo {
   const result = sourceResults?.find((item) => item.sourceName === 'VirusTotal');
   if (result?.status === 'match') {
     const count = detections(result.summary);
+    const domain = domainOf(result.summary);
     return {
       headline: count ? `${count} antivirus lo reportan como peligroso` : 'Los antivirus lo reportan como peligroso',
       short: 'Lo reportan',
       tone: 'danger',
-      text: 'Otros programas antivirus ya identificaron este enlace como dañino.',
+      text: domain ? `Otros programas antivirus ya marcaron el sitio ${domain} como dañino.` : 'Otros programas antivirus ya identificaron este enlace como dañino.',
       checkedAt: reportDate(result.summary),
     };
   }
   if (result?.status === 'no_match') {
+    const domain = domainOf(result.summary);
     return {
-      headline: 'Ningún antivirus lo ha reportado',
+      headline: domain ? `Ningún antivirus ha reportado el sitio ${domain}` : 'Ningún antivirus lo ha reportado',
       short: 'Sin reportes',
       // Gris y no verde: que nadie lo haya reportado no significa que sea seguro.
       tone: 'neutral',

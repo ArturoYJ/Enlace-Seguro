@@ -39,4 +39,15 @@ describe('friendlyReason', () => {
     expect(friendlyReason(brand)).toEqual({ title: 'Usa el nombre de una marca que no es suya', detail: brand });
     expect(friendlyReason('Algo nuevo')).toEqual({ title: 'Otra señal de riesgo', detail: 'Algo nuevo' });
   });
+
+  it('explica las razones que combinan sandbox y antivirus', () => {
+    expect(friendlyReason('Los antivirus de VirusTotal todavía no reportan este enlace, pero el entorno aislado sí encontró riesgo: puede ser un sitio nuevo o bien disfrazado.').title)
+      .toBe('Los antivirus no lo detectan, nosotros sí');
+    expect(friendlyReason('VirusTotal reportó 3 detección(es) maliciosa(s); el resultado requiere revisión.').title).toBe('Los antivirus ya lo reportan');
+  });
+
+  it('menciona el dominio cuando el informe es del dominio', () => {
+    const info = reputationInfo([{ sourceName: 'VirusTotal', status: 'no_match', summary: 'Informe del dominio chafael.github.io del 2026-11-22T04:39:54.000Z; detecciones maliciosas: 0.' }]);
+    expect(info.headline).toBe('Ningún antivirus ha reportado el sitio chafael.github.io');
+  });
 });
