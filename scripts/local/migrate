@@ -1,18 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/_platform.sh"
 compose=(docker compose -f "$root/infra/local/docker-compose.yml")
 uri='mongodb://127.0.0.1:27017/enlaceseguro_dev?replicaSet=rs0'
-if lsof_error="$(lsof -nP -iTCP:3000 -sTCP:LISTEN 2>&1 >/dev/null)"; then
-  echo 'Stop the local API and worker before migrating.' >&2
-  exit 1
-else
-  status=$?
-  if [[ $status -ne 1 || -n "$lsof_error" ]]; then
-    echo 'Cannot verify whether the API is running: lsof failed or is unavailable.' >&2
-    exit 1
-  fi
-fi
+require_api_stopped 'migrating'
 "${compose[@]}" exec -T mongo mongosh "$uri" --quiet --eval '
   if (!db.hello().isWritablePrimary) throw new Error("MongoDB is not primary");
   if (db.getCollectionNames().length !== 0) throw new Error("Database is not empty; inspect migration state before proceeding");

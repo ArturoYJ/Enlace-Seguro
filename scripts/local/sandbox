@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/_platform.sh"
 cd "$root/sandbox"
 exec node --env-file=.env.local --import tsx src/index.ts

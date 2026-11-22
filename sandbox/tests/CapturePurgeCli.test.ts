@@ -4,11 +4,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, it } from 'node:test';
 
 const CLI_PATH = fileURLToPath(new URL('../src/operations/purgeCaptures.ts', import.meta.url));
-const TSX_LOADER_PATH = createRequire(import.meta.url).resolve('tsx');
+// En Windows, --import no acepta rutas C:\...; como URL file:// funciona en todos los sistemas.
+const TSX_LOADER_PATH = pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href;
 const OLD_ID = '43e31db7-f65c-4471-9222-d8743368a48c';
 const RECENT_ID = '51614e16-f5b1-4b73-b749-11d456d61eb8';
 const SYMLINK_ID = '2d351e30-a8c9-4cbc-a7d6-93d09017e06f';

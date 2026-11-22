@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$(dirname "${BASH_SOURCE[0]}")/_platform.sh"
 cd "$root/api"
 test -f .env.local || { echo 'Run scripts/local/configure first.' >&2; exit 1; }
-env -i PATH="$PATH" HOME="$HOME" node --env-file=.env.local -e '
+env -i PATH="$PATH" HOME="$HOME" ${platform_env[@]+"${platform_env[@]}"} node --env-file=.env.local -e '
   if (process.env.MONGODB_URI !== "mongodb://127.0.0.1:27017/?replicaSet=rs0" || process.env.MONGODB_DB_NAME !== "enlaceseguro_dev") throw Error("Refusing nonlocal MongoDB target");
 '
 compose=(docker compose -f "$root/infra/local/docker-compose.yml")
@@ -22,10 +23,10 @@ if [[ ! -f .env.admin.local ]]; then
 fi
 if [[ "$admin_count" == 0 ]]; then
   echo 'Provisioning local admin using the existing credentials file.'
-  env -i PATH="$PATH" HOME="$HOME" MONGODB_URI='mongodb://127.0.0.1:27017/?replicaSet=rs0' MONGODB_DB_NAME=enlaceseguro_dev node --env-file=.env.local --env-file=.env.admin.local --import tsx src/infrastructure/cli/seed-admin.ts
+  env -i PATH="$PATH" HOME="$HOME" ${platform_env[@]+"${platform_env[@]}"} MONGODB_URI='mongodb://127.0.0.1:27017/?replicaSet=rs0' MONGODB_DB_NAME=enlaceseguro_dev node --env-file=.env.local --env-file=.env.admin.local --import tsx src/infrastructure/cli/seed-admin.ts
 fi
 # Verify the credentials correspond to the single admin, including after a failed or raced provisioning.
-env -i PATH="$PATH" HOME="$HOME" MONGODB_URI='mongodb://127.0.0.1:27017/?replicaSet=rs0' MONGODB_DB_NAME=enlaceseguro_dev node --env-file=.env.local --env-file=.env.admin.local --input-type=module <<'NODE'
+env -i PATH="$PATH" HOME="$HOME" ${platform_env[@]+"${platform_env[@]}"} MONGODB_URI='mongodb://127.0.0.1:27017/?replicaSet=rs0' MONGODB_DB_NAME=enlaceseguro_dev node --env-file=.env.local --env-file=.env.admin.local --input-type=module <<'NODE'
 import { MongoClient } from 'mongodb';
 import bcrypt from 'bcrypt';
 const client = new MongoClient(process.env.MONGODB_URI);
