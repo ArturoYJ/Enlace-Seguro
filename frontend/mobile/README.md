@@ -34,3 +34,13 @@ No uses una URL pública de API sin TLS fuera de un entorno local controlado. No
 - Capturas permanecen deshabilitadas hasta que exista el endpoint API autenticado con comprobación de pertenencia y la red privada del Sandbox esté verificada. Proveedores externos no se simulan.
 
 El cliente no promete que un sitio sin señales detectadas sea seguro; las URLs completas no deben persistirse ni registrarse.
+
+## Seguridad en Android
+
+`plugins/withAndroidHardening.js` se aplica al generar el proyecto nativo (`expo prebuild` o una compilación):
+
+- HTTP sin cifrar queda prohibido para toda la app. La única excepción es el host de `EXPO_PUBLIC_API_URL`, y solo si es una dirección de red local (por ejemplo `192.168.x.x` o `10.0.2.2` del emulador). Con una API en HTTPS no se agrega ninguna excepción.
+- La actividad principal lleva `taskAffinity=""` para mitigar el secuestro de tareas (StrandHogg).
+- `app.json` desactiva el respaldo de datos (`allowBackup: false`) y quita permisos que la app no usa (almacenamiento externo, ventanas superpuestas y vibración).
+
+Expo Go no usa esta configuración: solo aplica a la app compilada.
