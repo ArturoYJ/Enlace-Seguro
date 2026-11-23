@@ -1,0 +1,142 @@
+# Despliegue de EnlaceSeguro en una sola EC2 (AWS Academy).
+# Solo Caddy publica puertos (80 y 443). La API, el Sandbox, Envoy y el DNS viven en redes de Docker.
+# La base de datos es MongoDB Atlas (TLS obligatorio, ver api/src/infrastructure/database/mongo/mongoUriPolicy.ts).
+name: enlaceseguro
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?Define DOMAIN en deploy/aws/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    # Listo cuando existe la raíz de la CA interna que la API necesita para confiar en el Sandbox.
+    healthcheck:
+      test: ["CMD", "test", "-f", "/data/caddy/pki/authorities/local/root.crt"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      public:
+        ipv4_address: 10.250.1.10
+      sandbox:
+        aliases: [sandbox-tls]
+
+  api:
+    build: ../../api
+    restart: unless-stopped
+    depends_on:
+      caddy:
+        condition: service_healthy
+      sandbox:
+        condition: service_healthy
+    env_file: ./.env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOST: 0.0.0.0
+      # La API llega al Sandbox por HTTPS a través de Caddy (certificado de la CA interna de Caddy).
+      SANDBOX_SERVICE_URL: https://sandbox-tls:8443
+      NODE_EXTRA_CA_CERTS: /caddy-data/caddy/pki/authorities/local/root.crt
+      # Solo Caddy puede fijar X-Forwarded-For; la API confía únicamente en su IP.
+      TRUST_PROXY_CIDRS: 10.250.1.10/32
+      CAPTURE_PROXY_ENABLED: "true"
+    volumes:
+      - caddy-data:/caddy-data:ro
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=32m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks:
+      - public
+      - sandbox
+
+  sandbox:
+    build: ../../sandbox
+    restart: unless-stopped
+    depends_on: [egress-proxy, dns]
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      HOST: 0.0.0.0
+      MAX_CONCURRENCY: "2"
+      SANDBOX_ANALYSIS_DEADLINE_MS: "25000"
+      SANDBOX_SERVICE_TOKEN: ${SANDBOX_SERVICE_TOKEN:?Define SANDBOX_SERVICE_TOKEN en deploy/aws/.env}
+      SANDBOX_CREDENTIAL_PROBE_ENABLED: ${SANDBOX_CREDENTIAL_PROBE_ENABLED:-false}
+      # Chromium sale a Internet solo por Envoy, que rechaza IP privadas, metadatos de AWS y puertos raros.
+      SANDBOX_EGRESS_PROXY_URL: http://10.250.2.10:10000
+    # Red interna sin salida a Internet. El DNS se resuelve con el contenedor "dns" (ver resolv.conf).
+    volumes:
+      - ./sandbox-resolv.conf:/etc/resolv.conf:ro
+      - sandbox-captures:/app/captures
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /run:rw,noexec,nosuid,size=16m
+      - /home/enlaceseguro:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    cap_add: [SYS_CHROOT]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=../../sandbox/seccomp_profile.json
+    shm_size: 256m
+    mem_limit: 1536m
+    pids_limit: 512
+    networks:
+      sandbox:
+        ipv4_address: 10.250.2.20
+
+  egress-proxy:
+    image: envoyproxy/envoy:v1.40.2
+    restart: unless-stopped
+    # Se salta el entrypoint de la imagen (que cambia de usuario con su-exec) y corre directo sin root.
+    user: "101:101"
+    entrypoint: ["/usr/local/bin/envoy"]
+    command: ["-c", "/etc/envoy/envoy.yaml", "--log-level", "warn"]
+    volumes:
+      - ../../sandbox/egress-proxy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks:
+      sandbox:
+        ipv4_address: 10.250.2.10
+      egress: {}
+
+  dns:
+    image: coredns/coredns:1.12.1
+    restart: unless-stopped
+    command: ["-conf", "/etc/coredns/Corefile"]
+    volumes:
+      - ./Corefile:/etc/coredns/Corefile:ro
+    user: "65532:65532"
+    # Permite escuchar en el puerto 53 sin root ni capacidades extra.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "0"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks:
+      sandbox:
+        ipv4_address: 10.250.2.53
+      egress: {}
+
+networks:
+  public:
+    ipam:
+      config: [{ subnet: 10.250.1.0/24 }]
+  sandbox:
+    internal: true
+    ipam:
+      config: [{ subnet: 10.250.2.0/24 }]
+  egress: {}
+
+volumes:
+  caddy-data:
+  caddy-config:
+  sandbox-captures:

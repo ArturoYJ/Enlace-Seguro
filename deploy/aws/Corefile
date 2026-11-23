@@ -1,0 +1,9 @@
+# DNS para el Sandbox, que vive en una red sin salida a Internet.
+# Reenvía al resolvedor de la VPC de AWS y, si falla, a Cloudflare.
+. {
+    forward . 169.254.169.253 1.1.1.1 {
+        policy sequential
+    }
+    cache 30
+    errors
+}

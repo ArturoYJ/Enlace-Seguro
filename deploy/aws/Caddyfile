@@ -1,0 +1,28 @@
+{
+	# La CA interna solo se usa dentro de Docker; no se instala en el sistema.
+	skip_install_trust
+}
+
+# Entrada pública: HTTPS con certificado de Let's Encrypt para el dominio de DuckDNS.
+{$DOMAIN} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+	# Solo se expone la API versionada; cualquier otra ruta responde 404.
+	handle /api/v1/* {
+		reverse_proxy api:3000
+	}
+	handle {
+		respond "Not found" 404
+	}
+}
+
+# Tramo interno API -> Sandbox cifrado con la CA local de Caddy. Solo escucha en la red "sandbox".
+https://sandbox-tls:8443 {
+	tls internal
+	reverse_proxy 10.250.2.20:3001
+}
