@@ -25,7 +25,7 @@ export function registerAnalysisRoutes(fastify: FastifyInstance, deps: AnalysisR
         body: {
           type: 'object',
           properties: {
-            input: { type: 'string', maxLength: 65536 }
+            input: { type: 'string', maxLength: 2048 }
           }
         }
       }

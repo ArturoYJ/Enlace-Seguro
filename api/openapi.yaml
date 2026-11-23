@@ -796,8 +796,9 @@ components:
         input:
           type: string
           minLength: 1
-          maxLength: 65536
-          description: URL o texto contenedor de URL; backend limita a 65536 bytes UTF-8 y la persistencia cifra la entrada completa.
+          maxLength: 2048
+          pattern: '^https?://'
+          description: Un solo enlace http(s) de hasta 2048 caracteres, sin espacios, caracteres de control ni < > " ' ` { } | \ ^ sin codificar. La app extrae el enlace del mensaje antes de enviarlo.
           example: 'https://enlace-sospechoso.example/login'
 
     AnalysisAdmissionResponse:

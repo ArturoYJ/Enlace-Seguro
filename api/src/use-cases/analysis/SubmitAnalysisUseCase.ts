@@ -1,3 +1,4 @@
+import { checkAnalysisUrl } from './analysisUrlPolicy.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { IDailyAnalysisRepository } from '../../core/ports/IDailyAnalysisRepository.js';
 import { ISecurityAuditRepository } from '../../core/ports/ISecurityAuditRepository.js';
@@ -38,6 +39,12 @@ export class SubmitAnalysisUseCase {
 
     if (inputSizeBytes > 65536) {
       throw new ValidationError('Input payload exceeds maximum allowed size of 64 KiB.');
+    }
+
+    // Solo se admite un enlace http(s) limpio; cualquier otra cosa se rechaza antes de guardarla.
+    const urlCheck = checkAnalysisUrl(trimmedInput);
+    if (!urlCheck.ok) {
+      throw new ValidationError('Input must be a single http(s) URL.', [{ name: 'input', reason: urlCheck.problem }]);
     }
 
     const inputDigest = createHash('sha256').update(trimmedInput).digest('hex');

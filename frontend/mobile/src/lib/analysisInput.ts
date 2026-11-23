@@ -7,6 +7,11 @@ export type AnalysisInputResult =
   | { ok: false; reason: AnalysisInputError };
 
 const HTTP_URL_PATTERN = /https?:\/\/[^\s<>"'`]*/gi;
+// Igual que en la API: caracteres que no van sin codificar en un enlace y que se usan para inyectar
+// código (llaves, barra vertical, diagonal invertida, acento circunflejo) o para esconder texto
+// (caracteres de control e invisibles).
+const FORBIDDEN_URL_CHARACTERS = /[{}|\\^\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028\u2029\ufeff]/u;
+const HOSTNAME = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const TRAILING_SENTENCE_PUNCTUATION = /[.,!?;:…。！？]+$/u;
 
 function trimSentencePunctuation(value: string): string {
@@ -35,13 +40,15 @@ export function extractAnalysisUrl(input: string): AnalysisInputResult {
   if (candidates.length !== 1) return { ok: false, reason: 'multiple_urls' };
 
   const candidate = candidates[0];
+  if (FORBIDDEN_URL_CHARACTERS.test(candidate)) return { ok: false, reason: 'invalid_url' };
   try {
     const parsed = new URL(candidate);
     if (
       !['http:', 'https:'].includes(parsed.protocol) ||
       !parsed.hostname ||
       parsed.username.length > 0 ||
-      parsed.password.length > 0
+      parsed.password.length > 0 ||
+      (!parsed.hostname.startsWith('[') && !HOSTNAME.test(parsed.hostname.replace(/\.$/, '')))
     ) {
       return { ok: false, reason: 'invalid_url' };
     }

