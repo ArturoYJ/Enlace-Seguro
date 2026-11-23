@@ -84,8 +84,11 @@ En el archivo cambia `DOMAIN` por tu subdominio y `MONGODB_URI` por la cadena de
 ```sh
 cd deploy/aws
 docker compose up -d --build
+bash migrate.sh
 docker compose ps
 ```
+
+`migrate.sh` prepara la base de Atlas (colecciones, validadores e índices). Se corre una sola vez, sobre la base vacía.
 
 La primera vez tarda unos 10 minutos, porque descarga Chromium. Cuando todos los servicios digan `healthy` o `running`, prueba:
 

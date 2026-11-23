@@ -29,12 +29,26 @@ services:
       sandbox:
         aliases: [sandbox-tls]
 
+  # Caddy guarda su CA interna con permisos solo para root. Este contenedor de un solo uso copia el
+  # certificado raíz (que es público) a un volumen que la API, sin root, sí puede leer.
+  caddy-ca-export:
+    image: caddy:2.10-alpine
+    depends_on:
+      caddy:
+        condition: service_healthy
+    entrypoint: ["sh", "-c", "cp /data/caddy/pki/authorities/local/root.crt /ca/root.crt && chmod 0444 /ca/root.crt"]
+    volumes:
+      - caddy-data:/data:ro
+      - caddy-ca:/ca
+    network_mode: none
+    restart: "no"
+
   api:
     build: ../../api
     restart: unless-stopped
     depends_on:
-      caddy:
-        condition: service_healthy
+      caddy-ca-export:
+        condition: service_completed_successfully
       sandbox:
         condition: service_healthy
     env_file: ./.env
@@ -44,12 +58,12 @@ services:
       HOST: 0.0.0.0
       # La API llega al Sandbox por HTTPS a través de Caddy (certificado de la CA interna de Caddy).
       SANDBOX_SERVICE_URL: https://sandbox-tls:8443
-      NODE_EXTRA_CA_CERTS: /caddy-data/caddy/pki/authorities/local/root.crt
+      NODE_EXTRA_CA_CERTS: /caddy-ca/root.crt
       # Solo Caddy puede fijar X-Forwarded-For; la API confía únicamente en su IP.
       TRUST_PROXY_CIDRS: 10.250.1.10/32
       CAPTURE_PROXY_ENABLED: "true"
     volumes:
-      - caddy-data:/caddy-data:ro
+      - caddy-ca:/caddy-ca:ro
     read_only: true
     tmpfs: ["/tmp:rw,noexec,nosuid,size=32m"]
     cap_drop: [ALL]
@@ -116,10 +130,13 @@ services:
     volumes:
       - ./Corefile:/etc/coredns/Corefile:ro
     user: "65532:65532"
-    # Permite escuchar en el puerto 53 sin root ni capacidades extra.
+    # Permite escuchar en el puerto 53 sin root.
     sysctls:
       net.ipv4.ip_unprivileged_port_start: "0"
+    # El binario de CoreDNS trae la capacidad de usar el puerto 53 marcada en el archivo; si se quita
+    # del contenedor, Linux no deja ni ejecutarlo. Es la única capacidad que se conserva.
     cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
     security_opt: ["no-new-privileges:true"]
     networks:
       sandbox:
@@ -138,5 +155,6 @@ networks:
 
 volumes:
   caddy-data:
+  caddy-ca:
   caddy-config:
   sandbox-captures:

@@ -21,7 +21,11 @@ load("database/schema/collection-validators.js");
     "security_audit_events",
     "refresh_tokens"
   ];
-  const existing = db.getCollectionInfos({ name: { $in: collectionNames } }).map((item) => item.name);
+  // MongoDB Atlas en el plan gratuito (M0) rechaza filtros con operadores sobre "name" en
+  // listCollections; se leen los nombres sin filtro y se compara en el script. Mismo resultado.
+  const existing = db.getCollectionInfos({}, { nameOnly: true })
+    .map((item) => item.name)
+    .filter((name) => collectionNames.includes(name));
 
   if (existing.length > 0) {
     throw new Error(
