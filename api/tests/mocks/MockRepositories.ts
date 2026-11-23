@@ -233,10 +233,11 @@ export class MockDailyAnalysisRepository implements IDailyAnalysisRepository {
     return 'rescheduled';
   }
 
-  public async failClaimedAnalysisJob(job: ClaimedAnalysisJob, completedAt: Date, status: 'failed' | 'inconclusive', _reasonCode: string): Promise<boolean> {
+  public async failClaimedAnalysisJob(job: ClaimedAnalysisJob, completedAt: Date, status: 'failed' | 'inconclusive', reasonCode: string): Promise<boolean> {
     const claim = this.getClaim(job);
     if (!claim) return false;
     claim.attempt.processingStatus = status;
+    claim.attempt.failureCode = reasonCode;
     claim.attempt.updatedAt = completedAt;
     claim.attempt.completedAt = completedAt;
     claim.queue.state = 'dead';

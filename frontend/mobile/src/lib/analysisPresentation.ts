@@ -1,8 +1,10 @@
 import { colors } from '../theme/tokens';
+import { failureExplanation } from './failureExplanation';
 
 export type AnalysisPresentationInput = {
   processingStatus: string;
   analysis?: { verdict?: string };
+  failureReason?: string;
 };
 
 export type AnalysisPresentation = { label: string; icon: string; color: string };
@@ -29,6 +31,10 @@ export function analysisPresentation(item: AnalysisPresentationInput): AnalysisP
   if (verdict === 'sin_amenazas_detectadas') return { label: VERDICT_LABELS[verdict], icon: '✓', color: colors.success };
   if (item.processingStatus === 'received' || item.processingStatus === 'processing') {
     return { label: STATUS_LABELS[item.processingStatus], icon: '…', color: colors.primaryText };
+  }
+  if ((item.processingStatus === 'failed' || item.processingStatus === 'inconclusive') && item.failureReason) {
+    const explanation = failureExplanation(item.failureReason);
+    return { label: explanation.short, icon: '!', color: explanation.color };
   }
   if (item.processingStatus === 'failed' || item.processingStatus === 'validation_failed') {
     return { label: STATUS_LABELS[item.processingStatus], icon: '!', color: colors.textSecondary };

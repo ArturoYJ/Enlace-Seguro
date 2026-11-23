@@ -2,6 +2,7 @@ import { IDailyAnalysisRepository } from '../../core/ports/IDailyAnalysisReposit
 import { ResourceNotFoundError } from '../../core/errors/DomainErrors.js';
 import { AttemptProps } from '../../core/entities/Analysis.js';
 import { UserRole } from '../../core/entities/User.js';
+import { publicFailureReason, PublicFailureReason } from './publicFailureReason.js';
 
 export interface GetAnalysisDetailInput {
   attemptId: string;
@@ -23,6 +24,8 @@ export interface AnalysisDetailDTO {
   inputDigest: string;
   inputSizeBytes: number;
   analysis?: AttemptProps['analysis'];
+  /** Solo en análisis fallidos o no concluyentes: por qué no hubo veredicto, en categoría pública. */
+  failureReason?: PublicFailureReason;
 }
 
 export class GetAnalysisDetailUseCase {
@@ -66,7 +69,10 @@ export class GetAnalysisDetailUseCase {
       submittedInput: attempt.submittedInput,
       inputDigest: attempt.inputDigest,
       inputSizeBytes: attempt.inputSizeBytes,
-      analysis: publicAnalysis
+      analysis: publicAnalysis,
+      ...(attempt.processingStatus === 'failed' || attempt.processingStatus === 'inconclusive'
+        ? { failureReason: publicFailureReason(attempt.failureCode) }
+        : {})
     };
   }
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, AppState } from 'react-native';
 import { authenticatedRequest, useSession } from '../../lib/session';
 import { useAnalysisStatusAnnouncement } from '../../lib/useAnalysisStatusAnnouncement';
 import { analysisDetailErrorMessage } from '../../lib/analysisErrorMessage';
@@ -9,6 +9,7 @@ import { colors, radius, typefaces } from '../../theme/tokens';
 import { AnalysisCapture } from '../../components/AnalysisCapture';
 import { reputationInfo } from '../../lib/reputationSummary';
 import { friendlyReason } from '../../lib/friendlyReasons';
+import { failureExplanation } from '../../lib/failureExplanation';
 
 type AnalysisDetail = {
   attemptId: string;
@@ -20,6 +21,7 @@ type AnalysisDetail = {
   analysis?: { verdict: string; reasons: string[]; signals?: string[]; finalDestination?: string; redirects?: string[];
     sourceResults?: { sourceName: string; status: string; summary?: string }[];
     sourceFailures?: { sourceName: string; reasonCode: string }[] };
+  failureReason?: string;
 };
 
 const verdicts: Record<string, { title: string; message: string; color: string; sandbox: string; tips: string[] }> = {
@@ -109,6 +111,14 @@ export default function AnalysisDetailScreen() {
   }, [accessToken, attemptId, load, localDate, refreshVersion]);
 
   const processing = detail ? ['received', 'processing'].includes(detail.processingStatus) : false;
+  // Si la app estuvo en segundo plano mientras se analizaba, al volver se consulta otra vez el estado.
+  useEffect(() => {
+    if (!processing) return;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setRefreshVersion((value) => value + 1);
+    });
+    return () => subscription.remove();
+  }, [processing]);
   useEffect(() => {
     if (!processing) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -134,7 +144,9 @@ export default function AnalysisDetailScreen() {
   const resultDate = detail?.completedAt && Number.isFinite(new Date(detail.completedAt).getTime())
     ? new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Mexico_City' }).format(new Date(detail.completedAt))
     : receivedDate;
-  const presentation = verdict ?? (detail ? statusCopy[detail.processingStatus] : undefined);
+  const failed = !!detail && !verdict && (detail.processingStatus === 'failed' || detail.processingStatus === 'inconclusive');
+  const failure = failed && detail?.failureReason ? failureExplanation(detail.failureReason) : undefined;
+  const presentation = verdict ?? failure ?? (detail ? statusCopy[detail.processingStatus] : undefined);
   const resultIcon = verdict
     ? verdict.title === 'Sin amenazas detectadas' ? '✓' : verdict.title === 'Peligroso' ? '×' : '!'
     : statusCopy[detail?.processingStatus ?? '']?.icon ?? '!';
@@ -213,6 +225,18 @@ export default function AnalysisDetailScreen() {
                     <View style={styles.domainChip}><Text style={styles.domain}>{hostOnly(detail.submittedInput) ?? 'Dominio no disponible'}</Text></View>
                     <Text style={styles.meta}>{verdict ? `Revisado el ${resultDate}` : `Recibido el ${receivedDate}`}</Text>
                   </View>
+                  {!!failure && (
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>Qué puedes hacer</Text>
+                      {failure.tips.map((tip, index) => (
+                        <View key={tip} style={styles.tipRow}>
+                          <View style={[styles.tipNumber, { backgroundColor: `${failure.color}26` }]}><Text style={[styles.tipNumberText, { color: failure.color }]}>{index + 1}</Text></View>
+                          <Text style={styles.reasonText}>{tip}</Text>
+                        </View>
+                      ))}
+                      <Text style={styles.helper}>Sin poder abrir la página no podemos decir si es segura o peligrosa. No lo tomes como una señal de que es confiable.</Text>
+                    </View>
+                  )}
                   {!!verdict && (
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>Lo revisamos de 2 formas</Text>
@@ -293,13 +317,20 @@ export default function AnalysisDetailScreen() {
                     </View>
                   )}
                   {!!actionError && <Text accessibilityRole="alert" style={styles.error}>{actionError}</Text>}
-                  {detail.processingStatus === 'failed' ? (
+                  {detail.processingStatus === 'failed' && failure?.retryUseful !== false ? (
                     <>
                       <Pressable onPress={() => void retryAnalysis()} disabled={retrying} accessibilityRole="button" style={styles.primaryAction}>
                         {retrying ? <ActivityIndicator color={colors.white} /> : <Text style={styles.primaryActionText}>Intentar de nuevo</Text>}
                       </Pressable>
                       <Text style={styles.helper}>El reintento crea una nueva solicitud y puede consumir cuota.</Text>
                       <Pressable onPress={() => router.replace('/analysis')} accessibilityRole="button" style={styles.secondaryAction}><Text style={styles.secondaryActionText}>Volver al inicio</Text></Pressable>
+                    </>
+                  ) : detail.processingStatus === 'failed' ? (
+                    <>
+                      <Pressable onPress={() => router.replace('/analysis?tab=analyze')} accessibilityRole="button" style={styles.primaryAction}><Text style={styles.primaryActionText}>Analizar otro enlace</Text></Pressable>
+                      <Pressable onPress={() => void retryAnalysis()} disabled={retrying} accessibilityRole="button" style={styles.secondaryLink}>
+                        {retrying ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.action}>Intentar de nuevo de todos modos</Text>}
+                      </Pressable>
                     </>
                   ) : (
                     <>

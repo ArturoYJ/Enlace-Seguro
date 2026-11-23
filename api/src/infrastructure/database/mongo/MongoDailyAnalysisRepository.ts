@@ -1073,7 +1073,10 @@ export class MongoDailyAnalysisRepository implements IDailyAnalysisRepository {
   }
 
   private decodeAttempt(userId: string, localDate: string, attempt: PersistedAttemptProps): AttemptProps {
-    const { job: _job, ...publicAttempt } = attempt;
+    const { job, ...rest } = attempt;
+    const failureCode = (attempt.processingStatus === 'failed' || attempt.processingStatus === 'inconclusive')
+      ? job?.lastFailureCode : undefined;
+    const publicAttempt = failureCode ? { ...rest, failureCode } : rest;
     if (!attempt.submittedInputEncrypted) {
       return publicAttempt;
     }

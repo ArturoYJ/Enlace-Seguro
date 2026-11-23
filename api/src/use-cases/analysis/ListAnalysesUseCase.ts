@@ -1,4 +1,5 @@
 import { IDailyAnalysisRepository, PaginatedAttemptsResult } from '../../core/ports/IDailyAnalysisRepository.js';
+import { publicFailureReason } from './publicFailureReason.js';
 
 export interface ListAnalysesInput {
   userId: string;
@@ -21,8 +22,10 @@ export class ListAnalysesUseCase {
     });
     return {
       ...page,
-      items: page.items.map(({ analysis, ...attempt }) => ({
+      items: page.items.map(({ analysis, failureCode, ...attempt }) => ({
         ...attempt,
+        ...(attempt.processingStatus === 'failed' || attempt.processingStatus === 'inconclusive'
+          ? { failureReason: publicFailureReason(failureCode) } : {}),
         ...(analysis ? { analysis: Object.fromEntries(Object.entries(analysis).filter(([key]) => key !== 'screenshotRef')) as typeof analysis } : {})
       }))
     };
