@@ -1041,6 +1041,10 @@ components:
         analysis:
           $ref: '#/components/schemas/AnalysisPayload'
           nullable: true
+        failureReason:
+          type: string
+          description: Solo en análisis failed o inconclusive. Categoría pública de por qué no hubo veredicto.
+          enum: [site_unreachable, site_too_slow, dns_unavailable, tls_invalid, too_heavy, page_unreadable, service_busy, service_error]
 
     AuditEventType:
       type: string

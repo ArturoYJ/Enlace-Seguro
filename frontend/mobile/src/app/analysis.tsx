@@ -12,6 +12,7 @@ import { Skeleton } from '../components/Skeleton';
 import { authenticatedRequest, useSession } from '../lib/session';
 import { extractAnalysisUrl, MAX_ANALYSIS_INPUT_LENGTH } from '../lib/analysisInput';
 import { analysisPresentation } from '../lib/analysisPresentation';
+import { useLiveAnalysisRefresh } from '../lib/useLiveAnalysisRefresh';
 import { safeApiErrorMessage } from '../lib/safeApiErrorMessage';
 import { colors, radius, typefaces } from '../theme/tokens';
 
@@ -24,6 +25,7 @@ type RecentAnalysis = {
   processingStatus: string;
   submittedInput?: string;
   analysis?: { verdict?: string };
+  failureReason?: string;
 };
 type RecentAnalysesResponse = { items: RecentAnalysis[] };
 type AnalysisSummary = {
@@ -109,18 +111,22 @@ export default function AnalysisScreen() {
     }
   }, []);
 
-  const loadRecent = useCallback(async () => {
+  const loadRecent = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
     const requestVersion = ++recentRequestVersion.current;
     recentAbortRef.current?.abort();
     const controller = new AbortController();
     recentAbortRef.current = controller;
-    setRecentLoading(true);
-    setRecentError('');
+    // En las actualizaciones automáticas no se muestra el esqueleto de carga ni se borra la lista.
+    if (!silent) {
+      setRecentLoading(true);
+      setRecentError('');
+    }
     try {
       const page = await authenticatedRequest<RecentAnalysesResponse>('/analyses?limit=3', { signal: controller.signal });
       if (requestVersion === recentRequestVersion.current && !controller.signal.aborted) setRecent(page.items.slice(0, 3));
     } catch (error) {
-      if (requestVersion === recentRequestVersion.current && !controller.signal.aborted) {
+      if (!silent && requestVersion === recentRequestVersion.current && !controller.signal.aborted) {
         setRecentError(safeApiErrorMessage(error, 'No pudimos cargar tus análisis recientes.'));
       }
     } finally {
@@ -172,6 +178,13 @@ export default function AnalysisScreen() {
       recentAbortRef.current?.abort();
     };
   }, [accessToken, loadRecent]);
+
+  const refreshRecentSilently = useCallback(() => {
+    if (!accessToken) return;
+    void loadRecent({ silent: true });
+    void loadSummary();
+  }, [accessToken, loadRecent, loadSummary]);
+  useLiveAnalysisRefresh(recent, refreshRecentSilently);
 
   useEffect(() => {
     if (!accessToken) return;

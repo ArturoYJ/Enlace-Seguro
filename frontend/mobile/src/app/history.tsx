@@ -9,6 +9,7 @@ import { safeApiErrorMessage } from '../lib/safeApiErrorMessage';
 import { Skeleton } from '../components/Skeleton';
 import { authenticatedRequest, useSession } from '../lib/session';
 import { analysisPresentation } from '../lib/analysisPresentation';
+import { useLiveAnalysisRefresh } from '../lib/useLiveAnalysisRefresh';
 import { colors, radius, typefaces } from '../theme/tokens';
 
 type HistoryItem = {
@@ -18,6 +19,7 @@ type HistoryItem = {
   processingStatus: string;
   submittedInput?: string;
   analysis?: { verdict?: string; reasons?: string[] };
+  failureReason?: string;
 };
 type HistoryPage = { items: HistoryItem[]; hasMore: boolean; nextCursor: string | null };
 
@@ -76,6 +78,22 @@ export default function HistoryScreen() {
       setLoading(false); setLoadingMore(false);
     }
   }, []);
+
+  // Actualiza en silencio la primera página (sin esqueleto) para reflejar análisis que ya terminaron.
+  const refreshSilently = useCallback(async () => {
+    if (!accessToken || requestActive.current) return;
+    try {
+      const page = await authenticatedRequest<HistoryPage>('/analyses?limit=10');
+      setItems((current) => {
+        const key = (item: HistoryItem) => `${item.localDate}:${item.attemptId}`;
+        const fresh = new Map(page.items.map((item) => [key(item), item]));
+        const known = new Set(current.map(key));
+        const added = page.items.filter((item) => !known.has(key(item)));
+        return [...added, ...current.map((item) => fresh.get(key(item)) ?? item)];
+      });
+    } catch { /* la lista visible se conserva; el siguiente intento la actualizará */ }
+  }, [accessToken]);
+  useLiveAnalysisRefresh(items, () => { void refreshSilently(); });
 
   useEffect(() => {
     if (!accessToken) return;

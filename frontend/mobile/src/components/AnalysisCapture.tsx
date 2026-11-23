@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { initialWindowMetrics, SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { apiUrl } from '../lib/session';
 import { colors, radius, typefaces } from '../theme/tokens';
 
@@ -49,12 +49,19 @@ export function AnalysisCapture({ attemptId, accessToken }: Props) {
       </Pressable>
       <Text style={styles.helper}>{status === 'ready' ? 'Toca la imagen para ampliarla. ' : ''}No abras el enlace para comprobarlo.</Text>
       <Modal visible={expanded} animationType="fade" onRequestClose={() => setExpanded(false)} supportedOrientations={['portrait', 'landscape']}>
-        <SafeAreaView style={styles.modal}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Cerrar captura" onPress={() => setExpanded(false)} style={styles.close}>
-            <Text style={styles.closeText}>Cerrar</Text>
-          </Pressable>
-          <Image testID="analysis-capture-expanded" source={source} resizeMode="contain" style={styles.expandedImage} />
-        </SafeAreaView>
+        {/* Un Modal es una ventana aparte: necesita su propio SafeAreaProvider para conocer la muesca y la barra
+            de estado. El botón va abajo, lejos de la barra de estado y de los botones flotantes. */}
+        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+          <SafeAreaView style={styles.modal} edges={['top', 'bottom', 'left', 'right']}>
+            <Pressable accessibilityLabel="Cerrar captura" onPress={() => setExpanded(false)} style={styles.expandedArea}>
+              <Image testID="analysis-capture-expanded" source={source} resizeMode="contain" style={styles.expandedImage} />
+            </Pressable>
+            <Pressable testID="analysis-capture-close" accessibilityRole="button" accessibilityLabel="Cerrar captura" onPress={() => setExpanded(false)}
+              hitSlop={12} style={({ pressed }) => [styles.close, pressed && styles.closePressed]}>
+              <Text style={styles.closeText}>Cerrar</Text>
+            </Pressable>
+          </SafeAreaView>
+        </SafeAreaProvider>
       </Modal>
     </View>
   );
@@ -70,7 +77,9 @@ const styles = StyleSheet.create({
   image: { width: '100%', height: '100%' },
   helper: { color: colors.textMuted, fontFamily: typefaces.regular, fontSize: 13, lineHeight: 19 },
   modal: { flex: 1, backgroundColor: '#000' },
-  close: { alignSelf: 'flex-end', paddingHorizontal: 18, paddingVertical: 12 },
+  expandedArea: { flex: 1, justifyContent: 'center' },
+  close: { alignSelf: 'center', marginVertical: 16, minWidth: 160, alignItems: 'center', borderRadius: radius.pill, backgroundColor: colors.primary, paddingHorizontal: 28, paddingVertical: 14 },
+  closePressed: { opacity: 0.8 },
   closeText: { color: colors.white, fontFamily: typefaces.semibold, fontSize: 17 },
-  expandedImage: { flex: 1, width: '100%' },
+  expandedImage: { width: '100%', height: '100%' },
 });

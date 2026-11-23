@@ -43,6 +43,8 @@ export interface AttemptProps {
   inputDigest: string;
   inputSizeBytes: number;
   analysis?: AnalysisPayload;
+  /** Código interno del último fallo; solo en intentos failed/inconclusive. No se expone tal cual. */
+  failureCode?: string;
 }
 
 export interface DailyAnalysisProps {
