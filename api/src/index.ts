@@ -27,11 +27,13 @@ import { ProcessAnalysisJobUseCase } from './use-cases/analysis/ProcessAnalysisJ
 import { ListAuditEventsUseCase } from './use-cases/admin/ListAuditEventsUseCase.js';
 import { GetMetricsUseCase } from './use-cases/admin/GetMetricsUseCase.js';
 import { buildServer } from './presentation/server.js';
+import { assertMongoUriPolicy } from './infrastructure/database/mongo/mongoUriPolicy.js';
 
 async function bootstrap() {
   const port = parseInt(process.env['PORT'] || '3000', 10);
   const host = process.env['HOST'] || '0.0.0.0';
   const mongoUri = process.env['MONGODB_URI'] || 'mongodb://localhost:27017';
+  assertMongoUriPolicy(mongoUri);
   const dbName = process.env['MONGODB_DB_NAME'] || 'enlaceseguro_dev';
   const sandboxUrl = resolveSandboxServiceUrl(process.env['SANDBOX_SERVICE_URL']);
   const sandboxServiceToken = process.env['SANDBOX_SERVICE_TOKEN'];
