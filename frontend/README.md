@@ -8,7 +8,7 @@ Actualmente cubre onboarding, registro/login, gestión de sesión, análisis man
 
 ## Consola de administración
 
-La consola separada [`admin-console/`](./admin-console/) usa Vite + React/TypeScript y tokens solo en memoria, según la [especificación aprobada](../docs/superpowers/specs/2026-11-03-enlaceseguro-admin-console-design.md). Implementa acceso admin, métricas y auditoría con filtros de fecha/tipo y cursor. Sus pruebas usan respuestas sintéticas; falta verificar integración con API real, presentación visual, accesibilidad y hosting.
+La consola separada [`admin-console/`](./admin-console/) usa Vite + React/TypeScript y tokens solo en memoria, según la [especificación aprobada](../docs/design/2026-11-03-enlaceseguro-admin-console-design.md). Implementa acceso admin, métricas y auditoría con filtros de fecha/tipo y cursor. Sus pruebas usan respuestas sintéticas; falta verificar integración con API real, presentación visual, accesibilidad y hosting.
 
 ## Decisiones vigentes
 

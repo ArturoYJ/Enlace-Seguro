@@ -1,6 +1,6 @@
 # Plan: Sandbox y VirusTotal
 
-Diseño aprobado: `docs/superpowers/specs/2026-11-20-reputacion-virustotal-sandbox-design.md`.
+Diseño aprobado: `docs/design/2026-11-20-reputacion-virustotal-sandbox-design.md`.
 
 1. Corregir DNS no resoluble e inspección DOM incompleta sin generar veredicto; propagar los códigos en el contrato Sandbox/API y probar ambos casos.
 2. Registrar redirecciones de la navegación principal en orden; separar recursos secundarios y cubrir límites y regresiones.

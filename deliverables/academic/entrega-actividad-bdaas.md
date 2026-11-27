@@ -567,7 +567,7 @@ npm test             # Ejecución de 21 pruebas unitarias de seguridad y Anti-SS
 
 ## 8. Registro de Decisiones Técnicas (Marco COVE y Revisión Adversarial)
 
-El registro canónico de esta decisión se encuentra formalizado en [`Context/decisions/ADR-0002-atomic-quota-and-embedded-daily-analysis.md`](file:///Users/arturoyj/Universidad%20Politecnica/Proyectos/EnlaceSeguro/Context/decisions/ADR-0002-atomic-quota-and-embedded-daily-analysis.md).
+El registro canónico de esta decisión se encuentra formalizado en [`docs/decisions/ADR-0002-atomic-quota-and-embedded-daily-analysis.md`](../../docs/decisions/ADR-0002-atomic-quota-and-embedded-daily-analysis.md).
 
 ### 8.1 Metodología de Cadena de Verificación (Chain of Verification - COVE)
 Para definir el modelo de persistencia del caso de uso en BDaaS, se formularon preguntas de contraste adversarial entre dos propuestas arquitectónicas independientes:

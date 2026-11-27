@@ -5,7 +5,7 @@ Persistencia en MongoDB 8.0.x Community Server.
 
 ## Contrato de API
 - [`openapi.yaml`](openapi.yaml) define el contrato completo OpenAPI 3.1.0 para autenticación, gestión de cuotas atómicas, análisis y panel administrativo.
-- Diseño de autenticación documentado en [`../Context/architecture/auth-design.md`](../Context/architecture/auth-design.md).
+- Diseño de autenticación documentado en [`../docs/architecture/auth-design.md`](../docs/architecture/auth-design.md).
 
 ## Integración interna con Sandbox
 

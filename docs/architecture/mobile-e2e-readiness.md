@@ -39,7 +39,7 @@ Validado localmente: configuración Expo E2E/prod aislada, lint, typecheck, 63 p
 
 ## Salida antes de declarar el gate satisfecho
 
-- ADR de runner/framework (`Context/decisions/ADR-0006-mobile-native-e2e-strategy.md`), matriz de plataformas, variables/secretos y entorno sintético.
+- ADR de runner/framework (`docs/decisions/ADR-0006-mobile-native-e2e-strategy.md`), matriz de plataformas, variables/secretos y entorno sintético.
 - Ejecución reproducible Android + iOS instalada, con evidencia de registro→análisis→resultado→historial→logout.
 - Pruebas separadas de reanudación de sesión, conectividad/cuota y fallos; limpieza de datos tras cada run.
 - QA visual/accesibilidad en dispositivos reales o simuladores representativos, no inferida del export web.
